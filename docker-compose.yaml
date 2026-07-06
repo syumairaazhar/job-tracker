@@ -1,0 +1,16 @@
+services:
+  job-tracker:
+    image: php:8.2-apache
+    container_name: job-tracker-app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./app:/var/www/html
+      - ./database:/var/www/database
+    command: >
+      bash -c "apt-get update &&
+               apt-get install -y libsqlite3-dev &&
+               docker-php-ext-install pdo_sqlite &&
+               apache2-foreground"
+    restart: unless-stopped
+

@@ -1,0 +1,1465 @@
+<?php
+session_start();
+include 'db.php';
+
+function getStatusClass($status) {
+    return preg_replace('/\s+/', '-', strtolower(trim($status)));
+}
+
+// Generate CSRF token if it doesn't exist to secure edit/delete
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// Determine active view (dashboard, applications, analytics)
+$view = isset($_GET['view']) ? $_GET['view'] : 'dashboard';
+if (!in_array($view, ['dashboard', 'applications', 'analytics'])) {
+    $view = 'dashboard';
+}
+
+// Fetch general stats
+$total = $pdo->query("SELECT COUNT(*) FROM applications")->fetchColumn();
+$applied = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Applied'")->fetchColumn();
+$interview = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Interview'")->fetchColumn();
+$offered = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Offered'")->fetchColumn();
+$expired_rejected = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Expired' OR status='Rejected'")->fetchColumn();
+$unlikely = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Unlikely to Progress'")->fetchColumn();
+$pending = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Pending'")->fetchColumn();
+
+// Fetch all applications
+$stmt = $pdo->query("SELECT * FROM applications ORDER BY date_applied DESC, created_at DESC");
+$applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Filter applications by status, job_type, or platform if provided via query params
+$filterStatus = $_GET['status'] ?? '';
+$filterJobType = $_GET['job_type'] ?? '';
+$filterPlatform = $_GET['platform'] ?? '';
+
+if ($filterStatus !== '') {
+    if ($filterStatus === 'Expired_Rejected') {
+        $applications = array_filter($applications, fn($row) => $row['status'] === 'Expired' || $row['status'] === 'Rejected');
+    } else {
+        $applications = array_filter($applications, fn($row) => $row['status'] === $filterStatus);
+    }
+}
+if ($filterJobType !== '') {
+    $applications = array_filter($applications, fn($row) => $row['job_type'] === $filterJobType);
+}
+if ($filterPlatform !== '') {
+    $applications = array_filter($applications, fn($row) => $row['platform'] === $filterPlatform);
+}
+
+// Real-time Session Notification Listener
+$sessionNotification = null;
+if (isset($_SESSION['notification'])) {
+    $sessionNotification = $_SESSION['notification'];
+    unset($_SESSION['notification']);
+}
+
+// Notification & Deadline Reminders Query
+$todayStr = date('Y-m-d');
+$tomorrowStr = date('Y-m-d', strtotime('+1 day'));
+$reminders = [];
+
+// 1. Overdue Interviews (Date is in the past, but status is still Interview)
+$overdueInterviewsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE status = 'Interview' AND interview_date < ? 
+    ORDER BY interview_date DESC
+");
+$overdueInterviewsStmt->execute([$todayStr]);
+foreach ($overdueInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detailData = json_encode([
+        'id' => (int)$row['id'],
+        'company' => $row['company'],
+        'job_title' => $row['job_title'],
+        'location' => $row['location'] ?: '',
+        'job_type' => $row['job_type'] ?: '',
+        'salary_range' => $row['salary_range'] ?: '',
+        'date_found' => $row['date_found'] ?: '',
+        'date_applied' => $row['date_applied'] ?: '',
+        'interview_date' => $row['interview_date'] ?: '',
+        'follow_up_date' => $row['follow_up_date'] ?: '',
+        'platform' => $row['platform'] ?: '',
+        'status' => $row['status'],
+        'result' => $row['result'] ?: '',
+        'technical_skills' => $row['technical_skills'] ?: '',
+        'job_link' => $row['job_link'] ?: '',
+        'remark' => $row['remark'] ?: '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+    $reminders[] = [
+        'type' => 'overdue_interview',
+        'detail' => $detailData,
+        'message' => "Interview outcome update needed for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Scheduled: " . htmlspecialchars($row['interview_date'])
+    ];
+}
+
+// 2. Overdue Follow-ups (Date in the past, status is Applied/Responded)
+$overdueFollowupsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE (status = 'Applied' OR status = 'Responded') AND follow_up_date < ? 
+    ORDER BY follow_up_date DESC
+");
+$overdueFollowupsStmt->execute([$todayStr]);
+foreach ($overdueFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detailData = json_encode([
+        'id' => (int)$row['id'],
+        'company' => $row['company'],
+        'job_title' => $row['job_title'],
+        'location' => $row['location'] ?: '',
+        'job_type' => $row['job_type'] ?: '',
+        'salary_range' => $row['salary_range'] ?: '',
+        'date_found' => $row['date_found'] ?: '',
+        'date_applied' => $row['date_applied'] ?: '',
+        'interview_date' => $row['interview_date'] ?: '',
+        'follow_up_date' => $row['follow_up_date'] ?: '',
+        'platform' => $row['platform'] ?: '',
+        'status' => $row['status'],
+        'result' => $row['result'] ?: '',
+        'technical_skills' => $row['technical_skills'] ?: '',
+        'job_link' => $row['job_link'] ?: '',
+        'remark' => $row['remark'] ?: '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+    $reminders[] = [
+        'type' => 'overdue_followup',
+        'detail' => $detailData,
+        'message' => "Overdue follow-up for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Scheduled: " . htmlspecialchars($row['follow_up_date'])
+    ];
+}
+
+// 3. Today's Interviews
+$todayInterviewsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE interview_date = ?
+");
+$todayInterviewsStmt->execute([$todayStr]);
+foreach ($todayInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detailData = json_encode([
+        'id' => (int)$row['id'],
+        'company' => $row['company'],
+        'job_title' => $row['job_title'],
+        'location' => $row['location'] ?: '',
+        'job_type' => $row['job_type'] ?: '',
+        'salary_range' => $row['salary_range'] ?: '',
+        'date_found' => $row['date_found'] ?: '',
+        'date_applied' => $row['date_applied'] ?: '',
+        'interview_date' => $row['interview_date'] ?: '',
+        'follow_up_date' => $row['follow_up_date'] ?: '',
+        'platform' => $row['platform'] ?: '',
+        'status' => $row['status'],
+        'result' => $row['result'] ?: '',
+        'technical_skills' => $row['technical_skills'] ?: '',
+        'job_link' => $row['job_link'] ?: '',
+        'remark' => $row['remark'] ?: '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+    $reminders[] = [
+        'type' => 'today_interview',
+        'detail' => $detailData,
+        'message' => "🔔 Interview scheduled today for <strong>" . htmlspecialchars($row['company']) . "</strong>!",
+        'time' => "Today"
+    ];
+}
+
+// 4. Today's Follow-ups
+$todayFollowupsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE follow_up_date = ?
+");
+$todayFollowupsStmt->execute([$todayStr]);
+foreach ($todayFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detailData = json_encode([
+        'id' => (int)$row['id'],
+        'company' => $row['company'],
+        'job_title' => $row['job_title'],
+        'location' => $row['location'] ?: '',
+        'job_type' => $row['job_type'] ?: '',
+        'salary_range' => $row['salary_range'] ?: '',
+        'date_found' => $row['date_found'] ?: '',
+        'date_applied' => $row['date_applied'] ?: '',
+        'interview_date' => $row['interview_date'] ?: '',
+        'follow_up_date' => $row['follow_up_date'] ?: '',
+        'platform' => $row['platform'] ?: '',
+        'status' => $row['status'],
+        'result' => $row['result'] ?: '',
+        'technical_skills' => $row['technical_skills'] ?: '',
+        'job_link' => $row['job_link'] ?: '',
+        'remark' => $row['remark'] ?: '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+    $reminders[] = [
+        'type' => 'today_followup',
+        'detail' => $detailData,
+        'message' => "📅 Follow-up scheduled today for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Today"
+    ];
+}
+
+// 5. Tomorrow's Interviews
+$tomorrowInterviewsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE interview_date = ?
+");
+$tomorrowInterviewsStmt->execute([$tomorrowStr]);
+foreach ($tomorrowInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detailData = json_encode([
+        'id' => (int)$row['id'],
+        'company' => $row['company'],
+        'job_title' => $row['job_title'],
+        'location' => $row['location'] ?: '',
+        'job_type' => $row['job_type'] ?: '',
+        'salary_range' => $row['salary_range'] ?: '',
+        'date_found' => $row['date_found'] ?: '',
+        'date_applied' => $row['date_applied'] ?: '',
+        'interview_date' => $row['interview_date'] ?: '',
+        'follow_up_date' => $row['follow_up_date'] ?: '',
+        'platform' => $row['platform'] ?: '',
+        'status' => $row['status'],
+        'result' => $row['result'] ?: '',
+        'technical_skills' => $row['technical_skills'] ?: '',
+        'job_link' => $row['job_link'] ?: '',
+        'remark' => $row['remark'] ?: '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+    $reminders[] = [
+        'type' => 'tomorrow_interview',
+        'detail' => $detailData,
+        'message' => "Upcoming interview tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Tomorrow"
+    ];
+}
+
+// 6. Tomorrow's Follow-ups
+$tomorrowFollowupsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE follow_up_date = ?
+");
+$tomorrowFollowupsStmt->execute([$tomorrowStr]);
+foreach ($tomorrowFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detailData = json_encode([
+        'id' => (int)$row['id'],
+        'company' => $row['company'],
+        'job_title' => $row['job_title'],
+        'location' => $row['location'] ?: '',
+        'job_type' => $row['job_type'] ?: '',
+        'salary_range' => $row['salary_range'] ?: '',
+        'date_found' => $row['date_found'] ?: '',
+        'date_applied' => $row['date_applied'] ?: '',
+        'interview_date' => $row['interview_date'] ?: '',
+        'follow_up_date' => $row['follow_up_date'] ?: '',
+        'platform' => $row['platform'] ?: '',
+        'status' => $row['status'],
+        'result' => $row['result'] ?: '',
+        'technical_skills' => $row['technical_skills'] ?: '',
+        'job_link' => $row['job_link'] ?: '',
+        'remark' => $row['remark'] ?: '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
+    $reminders[] = [
+        'type' => 'tomorrow_followup',
+        'detail' => $detailData,
+        'message' => "Upcoming follow-up tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Tomorrow"
+    ];
+}
+
+// Fetch status distribution for doughnut chart
+$statusStmt = $pdo->query("SELECT status, COUNT(*) as total FROM applications GROUP BY status");
+$statusData = $statusStmt->fetchAll(PDO::FETCH_ASSOC);
+$statusLabels = [];
+$statusCounts = [];
+foreach ($statusData as $item) {
+    $statusLabels[] = $item['status'];
+    $statusCounts[] = $item['total'];
+}
+
+// Fetch platform distribution for platform bar chart
+$platformStmt = $pdo->query("
+    SELECT platform, COUNT(*) as total 
+    FROM applications 
+    WHERE platform IS NOT NULL AND platform != '' 
+    GROUP BY platform 
+    ORDER BY total DESC 
+    LIMIT 6
+");
+$platformData = $platformStmt->fetchAll(PDO::FETCH_ASSOC);
+$platformLabels = [];
+$platformCounts = [];
+foreach ($platformData as $item) {
+    $platformLabels[] = $item['platform'];
+    $platformCounts[] = $item['total'];
+}
+
+// Fetch job type distribution for job type doughnut/pie chart
+$jobTypeStmt = $pdo->query("
+    SELECT job_type, COUNT(*) as total 
+    FROM applications 
+    WHERE job_type IS NOT NULL AND job_type != '' 
+    GROUP BY job_type
+");
+$jobTypeData = $jobTypeStmt->fetchAll(PDO::FETCH_ASSOC);
+$jobTypeLabels = [];
+$jobTypeCounts = [];
+foreach ($jobTypeData as $item) {
+    $jobTypeLabels[] = $item['job_type'];
+    $jobTypeCounts[] = $item['total'];
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Tracker</title>
+    <link rel="stylesheet" href="style.css?v=1.0.4">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div class="layout">
+        <!-- Sticky Left Sidebar (Desktop) -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="sidebar-logo-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    </svg>
+                </div>
+                <h2>JobTracker</h2>
+            </div>
+            
+            <ul class="sidebar-menu">
+                <li class="sidebar-menu-item <?= $view === 'dashboard' ? 'active' : '' ?>">
+                    <a href="index.php?view=dashboard">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="sidebar-menu-item <?= $view === 'applications' ? 'active' : '' ?>">
+                    <a href="index.php?view=applications">
+                        <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                        Applications
+                    </a>
+                </li>
+                <li class="sidebar-menu-item <?= $view === 'analytics' ? 'active' : '' ?>">
+                    <a href="index.php?view=analytics">
+                        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                        Analytics
+                    </a>
+                </li>
+                <li class="sidebar-menu-item">
+                    <a href="add.php">
+                        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add Job
+                    </a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Bottom Navigation Bar (Mobile only) -->
+        <nav class="mobile-nav">
+            <ul class="mobile-nav-menu">
+                <li class="mobile-nav-item <?= $view === 'dashboard' ? 'active' : '' ?>">
+                    <a href="index.php?view=dashboard">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+                        Home
+                    </a>
+                </li>
+                <li class="mobile-nav-item <?= $view === 'applications' ? 'active' : '' ?>">
+                    <a href="index.php?view=applications">
+                        <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                        Jobs
+                    </a>
+                </li>
+                <li class="mobile-nav-item <?= $view === 'analytics' ? 'active' : '' ?>">
+                    <a href="index.php?view=analytics">
+                        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                        Charts
+                    </a>
+                </li>
+                <li class="mobile-nav-item">
+                    <a href="add.php">
+                        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Workspace -->
+        <main class="main">
+            
+            <!-- Topbar Header -->
+            <div class="topbar">
+                <div>
+                    <?php if ($view === 'dashboard'): ?>
+                        <h1>Dashboard</h1>
+                        <p>Welcome back! Monitor your job search progress in one place.</p>
+                    <?php elseif ($view === 'applications'): ?>
+                        <h1>Applications</h1>
+                        <p>Search, filter, and manage your job applications list.</p>
+                    <?php else: ?>
+                        <h1>Analytics</h1>
+                        <p>Visualize key metrics, platform distributions, and job statistics.</p>
+                    <?php endif; ?>
+                </div>
+                <div class="topbar-actions">
+                    <!-- Notification Bell & Dropdown -->
+                    <div class="notification-bell-wrapper">
+                        <button class="notification-bell-btn" id="notificationBell" aria-label="Toggle notifications">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                            </svg>
+                            <?php if (count($reminders) > 0): ?>
+                                <span class="notification-badge"><?= count($reminders) ?></span>
+                            <?php endif; ?>
+                        </button>
+                        
+                        <div class="notification-dropdown" id="notificationDropdown">
+                            <div class="notification-dropdown-header">
+                                <span class="notification-dropdown-title">Reminders (<?= count($reminders) ?>)</span>
+                                <button class="notification-dropdown-enable" id="enablePushBtn">Enable Push</button>
+                            </div>
+                            <div class="notification-list">
+                                <?php if (count($reminders) === 0): ?>
+                                    <div class="notification-dropdown-empty">
+                                        <svg viewBox="0 0 24 24">
+                                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                                        </svg>
+                                        <p>All caught up! No notifications or overdue follow-ups.</p>
+                                    </div>
+                                <?php else: ?>
+                                    <?php foreach ($reminders as $rem): 
+                                        $dotClass = 'follow_up';
+                                        if (strpos($rem['type'], 'overdue') !== false) {
+                                            $dotClass = 'overdue';
+                                        } elseif (strpos($rem['type'], 'interview') !== false) {
+                                            $dotClass = 'interview';
+                                        }
+                                    ?>
+                                        <div class="notification-item" data-app-detail='<?= $rem['detail'] ?>'>
+                                            <span class="notification-item-dot <?= $dotClass ?>"></span>
+                                            <div class="notification-item-body">
+                                                <span class="notification-item-text"><?= $rem['message'] ?></span>
+                                                <span class="notification-item-time"><?= htmlspecialchars($rem['time']) ?></span>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <a href="add.php" class="btn">+ Add Application</a>
+                </div>
+            </div>
+
+            <!-- Stats metric grid (Rendered on Dashboard & Applications) -->
+            <?php if ($view !== 'analytics'): ?>
+            <div class="cards">
+                <a href="index.php?view=applications" class="card-link">
+                    <div class="card purple">
+                        <h3>Total</h3>
+                        <p><?= (int)$total ?></p>
+                    </div>
+                </a>
+                <a href="index.php?view=applications&status=Applied" class="card-link">
+                    <div class="card blue">
+                        <h3>Applied</h3>
+                        <p><?= (int)$applied ?></p>
+                    </div>
+                </a>
+                <a href="index.php?view=applications&status=Pending" class="card-link">
+                    <div class="card cyan">
+                        <h3>Pending</h3>
+                        <p><?= (int)$pending ?></p>
+                    </div>
+                </a>
+                <a href="index.php?view=applications&status=Interview" class="card-link">
+                    <div class="card orange">
+                        <h3>Interview</h3>
+                        <p><?= (int)$interview ?></p>
+                    </div>
+                </a>
+                <a href="index.php?view=applications&status=Offered" class="card-link">
+                    <div class="card green">
+                        <h3>Offered</h3>
+                        <p><?= (int)$offered ?></p>
+                    </div>
+                </a>
+                <a href="index.php?view=applications&status=Expired_Rejected" class="card-link">
+                    <div class="card red">
+                        <h3>Expired & Rejected</h3>
+                        <p><?= (int)$expired_rejected ?></p>
+                    </div>
+                </a>
+                <a href="index.php?view=applications&status=Unlikely+to+Progress" class="card-link">
+                    <div class="card pink">
+                        <h3>Unlikely to Progress</h3>
+                        <p><?= (int)$unlikely ?></p>
+                    </div>
+                </a>
+            </div>
+            <?php endif; ?>
+
+            <!-- ================= VIEW 1: DASHBOARD ================= -->
+            <?php if ($view === 'dashboard'): ?>
+                <div class="dashboard-grid">
+                    
+                    <!-- Full-width: Recent Applications Table -->
+                    <div class="table-box">
+                        <h2>
+                            Recent Applications
+                            <a href="index.php?view=applications" class="btn secondary" style="padding: 6px 14px; font-size: 13px;">View All</a>
+                        </h2>
+                        
+                        <div class="table-wrapper">
+                            <?php if (empty($applications)): ?>
+                                <div class="empty-state">
+                                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                    <h3>No applications tracked yet</h3>
+                                    <p>Track your first job application to get started.</p>
+                                </div>
+                            <?php else: ?>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Company</th>
+                                            <th>Job Title</th>
+                                            <th>Date Applied</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php 
+                                        $recentApps = array_slice($applications, 0, 5);
+                                        foreach ($recentApps as $row):
+                                            $detailData = json_encode([
+                                                'id' => (int)$row['id'],
+                                                'company' => $row['company'],
+                                                'job_title' => $row['job_title'],
+                                                'location' => $row['location'] ?: '',
+                                                'job_type' => $row['job_type'] ?: '',
+                                                'salary_range' => $row['salary_range'] ?: '',
+                                                'date_found' => $row['date_found'] ?: '',
+                                                'date_applied' => $row['date_applied'] ?: '',
+                                                'interview_date' => $row['interview_date'] ?: '',
+                                                'follow_up_date' => $row['follow_up_date'] ?: '',
+                                                'platform' => $row['platform'] ?: '',
+                                                'status' => $row['status'],
+                                                'result' => $row['result'] ?: '',
+                                                'technical_skills' => $row['technical_skills'] ?: '',
+                                                'job_link' => $row['job_link'] ?: '',
+                                                'remark' => $row['remark'] ?: '',
+                                            ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+                                        ?>
+                                            <tr class="status-<?= getStatusClass($row['status']) ?>" data-detail='<?= $detailData ?>'>
+                                                <td class="searchable"><a href="javascript:void(0)" class="detail-link"><?= htmlspecialchars($row['company']) ?></a></td>
+                                                <td class="searchable"><a href="javascript:void(0)" class="detail-link"><strong><?= htmlspecialchars($row['job_title']) ?></strong></a></td>
+                                                <td><?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: 'N/A') ?></td>
+                                                <td>
+                                                    <span class="badge <?= getStatusClass($row['status']) ?>">
+                                                        <?= htmlspecialchars($row['status']) ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div class="action-links">
+                                                        <a class="edit" href="edit.php?id=<?= (int)$row['id'] ?>">Edit</a>
+                                                        <a class="delete" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Bottom row: Status Overview Chart -->
+                    <div class="dashboard-chart-row">
+                        <div class="chart-box">
+                            <h2>Status Overview</h2>
+                            <div style="position: relative; width: 100%; max-width: 320px; aspect-ratio: 1;">
+                                <canvas id="quickStatusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            <!-- ================= VIEW 2: APPLICATIONS LIST ================= -->
+            <?php elseif ($view === 'applications'): ?>
+                <div class="table-box">
+                    
+                    <div class="table-header-controls">
+                        <!-- Left: Live Search -->
+                        <div class="search-box-wrapper">
+                            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <input type="text" id="tableSearch" placeholder="Search company, title, platform, remark...">
+                        </div>
+                        
+                        <!-- Right: Filter By Status + Export -->
+                        <div class="filter-wrapper">
+                            <select id="statusFilter">
+                                <?php $filterStatus = $_GET['status'] ?? ''; ?>
+                                <option value="" <?= $filterStatus === '' ? 'selected' : '' ?>>All Statuses</option>
+                                <option value="Saved" <?= $filterStatus === 'Saved' ? 'selected' : '' ?>>Saved</option>
+                                <option value="Pending" <?= $filterStatus === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                <option value="Applied" <?= $filterStatus === 'Applied' ? 'selected' : '' ?>>Applied</option>
+                                <option value="Responded" <?= $filterStatus === 'Responded' ? 'selected' : '' ?>>Responded</option>
+                                <option value="Interview" <?= $filterStatus === 'Interview' ? 'selected' : '' ?>>Interview</option>
+                                <option value="Assessment" <?= $filterStatus === 'Assessment' ? 'selected' : '' ?>>Assessment</option>
+                                <option value="Rejected" <?= $filterStatus === 'Rejected' ? 'selected' : '' ?>>Rejected</option>
+                                <option value="Offered" <?= $filterStatus === 'Offered' ? 'selected' : '' ?>>Offered</option>
+                                <option value="Expired" <?= $filterStatus === 'Expired' ? 'selected' : '' ?>>Expired</option>
+                                <option value="Expired_Rejected" <?= $filterStatus === 'Expired_Rejected' ? 'selected' : '' ?>>Expired & Rejected</option>
+                                <option value="Unlikely to Progress" <?= $filterStatus === 'Unlikely to Progress' ? 'selected' : '' ?>>Unlikely to Progress</option>
+                            </select>
+
+                            <!-- Export to Excel Button -->
+                            <?php
+                                $exportParams = [];
+                                if (!empty($_GET['status']))   $exportParams['status']   = $_GET['status'];
+                                if (!empty($_GET['job_type'])) $exportParams['job_type'] = $_GET['job_type'];
+                                if (!empty($_GET['platform'])) $exportParams['platform'] = $_GET['platform'];
+                                $exportUrl = 'export.php' . (!empty($exportParams) ? '?' . http_build_query($exportParams) : '');
+                            ?>
+                            <a href="<?= htmlspecialchars($exportUrl) ?>" id="exportExcelBtn" class="btn export-btn" title="Export current view to Excel">
+                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <line x1="12" y1="11" x2="12" y2="17"/>
+                                    <line x1="9" y1="14" x2="15" y2="14"/>
+                                </svg>
+                                Export Excel
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <?php if (empty($applications)): ?>
+                            <div class="empty-state">
+                                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                <h3>No applications found</h3>
+                                <p>Click the "+ Add Application" button to insert a record.</p>
+                            </div>
+                        <?php else: ?>
+                            <table id="applicationsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Company</th>
+                                        <th>Job Title</th>
+                                        <th>Date Applied</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($applications as $row):
+                                        $detailData = json_encode([
+                                            'id' => (int)$row['id'],
+                                            'company' => $row['company'],
+                                            'job_title' => $row['job_title'],
+                                            'location' => $row['location'] ?: '',
+                                            'job_type' => $row['job_type'] ?: '',
+                                            'salary_range' => $row['salary_range'] ?: '',
+                                            'date_found' => $row['date_found'] ?: '',
+                                            'date_applied' => $row['date_applied'] ?: '',
+                                            'interview_date' => $row['interview_date'] ?: '',
+                                            'follow_up_date' => $row['follow_up_date'] ?: '',
+                                            'platform' => $row['platform'] ?: '',
+                                            'status' => $row['status'],
+                                            'result' => $row['result'] ?: '',
+                                            'technical_skills' => $row['technical_skills'] ?: '',
+                                            'job_link' => $row['job_link'] ?: '',
+                                            'remark' => $row['remark'] ?: '',
+                                        ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+                                    ?>
+                                        <tr class="app-row status-<?= getStatusClass($row['status']) ?>" data-status="<?= htmlspecialchars($row['status']) ?>" data-detail='<?= $detailData ?>'>
+                                            <td class="searchable"><a href="javascript:void(0)" class="detail-link"><?= htmlspecialchars($row['company']) ?></a></td>
+                                            <td class="searchable"><a href="javascript:void(0)" class="detail-link"><strong><?= htmlspecialchars($row['job_title']) ?></strong></a></td>
+                                            <td><?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: 'N/A') ?></td>
+                                            <td>
+                                                <span class="badge <?= getStatusClass($row['status']) ?>">
+                                                    <?= htmlspecialchars($row['status']) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="action-links">
+                                                    <a class="edit" href="edit.php?id=<?= (int)$row['id'] ?>">Edit</a>
+                                                    <a class="delete" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <div id="noResults" class="empty-state" style="display: none;">
+                                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                                <h3>No matching applications found</h3>
+                                <p>Try adjusting your search terms or filters.</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+            <!-- ================= VIEW 3: ANALYTICS ================= -->
+            <?php else: ?>
+                <div class="analytics-grid">
+                    
+                    <!-- Chart 1: Status Distribution -->
+                    <div class="chart-box">
+                        <h2>Application Statuses</h2>
+                        <div style="position: relative; margin: auto; width: 100%; max-width: 320px; aspect-ratio: 1;">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: Job Types -->
+                    <div class="chart-box">
+                        <h2>Job Type Distribution</h2>
+                        <div style="position: relative; margin: auto; width: 100%; max-width: 320px; aspect-ratio: 1;">
+                            <canvas id="jobTypeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 3: Platform distribution -->
+                    <div class="chart-box analytics-full">
+                        <h2>Top Channels & Platforms</h2>
+                        <div style="position: relative; width: 100%; max-width: 600px; height: 280px;">
+                            <canvas id="platformChart"></canvas>
+                        </div>
+                    </div>
+
+                </div>
+            <?php endif; ?>
+
+        </main>
+    </div>
+
+    <!-- Premium Job Details Modal -->
+    <div id="detailsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalJobTitle">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div class="modal-title-area">
+                    <h3 id="modalJobTitle" class="modal-title"></h3>
+                    <div id="modalCompany" class="modal-subtitle"></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span id="modalStatusBadge" class="badge"></span>
+                    <button class="modal-close-btn" id="modalCloseBtn" aria-label="Close modal">
+                        <svg viewBox="0 0 24 24">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="modal-content">
+                <!-- Core Details Grid -->
+                <div class="modal-grid">
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Location</span>
+                        <span id="modalLocation" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Job Type</span>
+                        <span id="modalJobType" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Salary Range</span>
+                        <span id="modalSalary" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Platform / Channel</span>
+                        <span id="modalPlatform" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Date Found</span>
+                        <span id="modalDateFound" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Date Applied</span>
+                        <span id="modalDateApplied" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Interview Date</span>
+                        <span id="modalInterviewDate" class="modal-info-value"></span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Follow-up Date</span>
+                        <span id="modalFollowUpDate" class="modal-info-value"></span>
+                    </div>
+                </div>
+
+                <!-- Result (if available) -->
+                <div id="modalResultWrapper" class="modal-info-item" style="display: none;">
+                    <span class="modal-info-label">Application Result</span>
+                    <span id="modalResult" class="modal-info-value" style="font-weight: 700;"></span>
+                </div>
+
+                <!-- Technical Skills -->
+                <div id="modalSkillsWrapper" class="modal-info-item" style="display: none;">
+                    <span class="modal-section-title">Technical Skills</span>
+                    <div id="modalSkills" class="modal-skills-list"></div>
+                </div>
+
+                <!-- Job Listing Link -->
+                <div id="modalLinkWrapper" class="modal-info-item" style="display: none;">
+                    <span class="modal-section-title">Job Link</span>
+                    <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 8px 16px; font-size: 13px;">
+                        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                        View Original Posting
+                    </a>
+                </div>
+
+                <!-- Notes / Remark -->
+                <div class="modal-info-item">
+                    <span class="modal-section-title">Notes & Remarks</span>
+                    <div id="modalRemark" class="modal-remark-card"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <a id="modalEditBtn" href="" class="btn">Edit Application</a>
+                <button id="modalCloseFooterBtn" class="btn secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ChartJS and Interactive Filters Script -->
+    <script>
+        // Shared colors matching CSS properties (Pastel Theme)
+        const chartColors = {
+            saved: '#64748b',
+            pending: '#e67e22',
+            applied: '#3b82f6',
+            responded: '#a855f7',
+            interview: '#f59e0b',
+            assessment: '#06b6d4',
+            rejected: '#f43f5e',
+            offered: '#10b981',
+            expired: '#94a3b8',
+            unlikely: '#db2777',
+            text: '#7b6f8c',
+            grid: 'rgba(100, 70, 120, 0.06)'
+        };
+
+        const mapColors = (labels) => {
+            return labels.map(label => {
+                const lower = label.toLowerCase();
+                if (lower.includes('saved')) return chartColors.saved;
+                if (lower.includes('pending')) return chartColors.pending;
+                if (lower.includes('applied')) return chartColors.applied;
+                if (lower.includes('responded')) return chartColors.responded;
+                if (lower.includes('interview')) return chartColors.interview;
+                if (lower.includes('assessment')) return chartColors.assessment;
+                if (lower.includes('rejected')) return chartColors.rejected;
+                if (lower.includes('offered')) return chartColors.offered;
+                if (lower.includes('expired')) return chartColors.expired;
+                if (lower.includes('unlikely')) return chartColors.unlikely;
+                
+                // Fallbacks for random/different job types or platforms (pastels)
+                const hash = label.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const palettes = ['#f472b6', '#c084fc', '#60a5fa', '#34d399', '#fbbf24', '#f87171'];
+                return palettes[hash % palettes.length];
+            });
+        };
+
+        // Render charts depending on the active view
+        <?php if ($view === 'dashboard'): ?>
+            // Quick Status Doughnut
+            const statusLabels = <?= json_encode($statusLabels) ?>;
+            const statusCounts = <?= json_encode($statusCounts) ?>;
+            
+            new Chart(document.getElementById('quickStatusChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        data: statusCounts,
+                        backgroundColor: mapColors(statusLabels),
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (evt, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const label = statusLabels[index];
+                            window.location.href = 'index.php?view=applications&status=' + encodeURIComponent(label);
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: chartColors.text,
+                                font: { family: 'Outfit', size: 12 }
+                            }
+                        }
+                    }
+                }
+            });
+        <?php endif; ?>
+
+        <?php if ($view === 'analytics'): ?>
+            // Analytics View status doughnut
+            const statusLabels = <?= json_encode($statusLabels) ?>;
+            const statusCounts = <?= json_encode($statusCounts) ?>;
+            
+            new Chart(document.getElementById('statusChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        data: statusCounts,
+                        backgroundColor: mapColors(statusLabels),
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (evt, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const label = statusLabels[index];
+                            window.location.href = 'index.php?view=applications&status=' + encodeURIComponent(label);
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: chartColors.text,
+                                font: { family: 'Outfit', size: 12 }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Render Job Type Doughnut Chart
+            const jobTypeLabels = <?php echo json_encode($jobTypeLabels); ?>;
+            const jobTypeCounts = <?php echo json_encode($jobTypeCounts); ?>;
+            new Chart(document.getElementById('jobTypeChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: jobTypeLabels,
+                    datasets: [{
+                        data: jobTypeCounts,
+                        backgroundColor: mapColors(jobTypeLabels),
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (evt, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const label = jobTypeLabels[index];
+                            window.location.href = 'index.php?view=applications&job_type=' + encodeURIComponent(label);
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: chartColors.text,
+                                font: { family: 'Outfit', size: 12 }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Render Platform Bar Chart
+            const platformLabels = <?php echo json_encode($platformLabels); ?>;
+            const platformCounts = <?php echo json_encode($platformCounts); ?>;
+            new Chart(document.getElementById('platformChart'), {
+                type: 'bar',
+                data: {
+                    labels: platformLabels,
+                    datasets: [{
+                        label: 'Applications',
+                        data: platformCounts,
+                        backgroundColor: mapColors(platformLabels),
+                        borderWidth: 1,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (evt, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const label = platformLabels[index];
+                            window.location.href = 'index.php?view=applications&platform=' + encodeURIComponent(label);
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: chartColors.text, font: { family: 'Outfit' } }
+                        },
+                        y: {
+                            grid: { color: chartColors.grid },
+                            ticks: { color: chartColors.text, font: { family: 'Outfit' }, precision: 0 }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        <?php endif; ?>
+
+        // Applications list filtering logic (Client-Side Search & Filter with URL syncing)
+        <?php if ($view === 'applications' && !empty($applications)): ?>
+            const tableSearch = document.getElementById('tableSearch');
+            const statusFilter = document.getElementById('statusFilter');
+            const tableRows = document.querySelectorAll('.app-row');
+            const noResults = document.getElementById('noResults');
+            const tableElement = document.getElementById('applicationsTable');
+
+            function filterTable() {
+                const query = tableSearch.value.toLowerCase().trim();
+                const selectedStatus = statusFilter.value;
+                let visibleCount = 0;
+
+                tableRows.forEach(row => {
+                    const rowStatus = row.getAttribute('data-status');
+                    let detailText = '';
+                    const detailDataStr = row.getAttribute('data-detail');
+                    if (detailDataStr) {
+                        try {
+                            const details = JSON.parse(detailDataStr);
+                            detailText = [
+                                details.company,
+                                details.job_title,
+                                details.platform,
+                                details.location,
+                                details.remark,
+                                details.technical_skills
+                            ].filter(Boolean).join(' ').toLowerCase();
+                        } catch (e) {}
+                    }
+
+                    const textContent = Array.from(row.querySelectorAll('.searchable'))
+                        .map(cell => cell.textContent.toLowerCase())
+                        .join(' ') + ' ' + detailText;
+                    
+                    const matchesSearch = query === '' || textContent.includes(query);
+                    const matchesStatus = selectedStatus === '' || 
+                        (selectedStatus === 'Expired_Rejected' 
+                            ? (rowStatus === 'Expired' || rowStatus === 'Rejected') 
+                            : rowStatus === selectedStatus);
+
+                    if (matchesSearch && matchesStatus) {
+                        row.style.display = '';
+                        visibleCount++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+
+                if (visibleCount === 0) {
+                    tableElement.style.display = 'none';
+                    noResults.style.display = '';
+                } else {
+                    tableElement.style.display = '';
+                    noResults.style.display = 'none';
+                }
+
+                // Sync filters to URL query parameters
+                const currentParams = new URLSearchParams(window.location.search);
+                if (query !== '') {
+                    currentParams.set('search', tableSearch.value);
+                } else {
+                    currentParams.delete('search');
+                }
+                if (selectedStatus !== '') {
+                    currentParams.set('status', selectedStatus);
+                } else {
+                    currentParams.delete('status');
+                }
+                const newSearch = currentParams.toString();
+                const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '');
+                window.history.replaceState(null, '', newUrl);
+            }
+
+            // Load filters from URL parameters on page load
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('search')) {
+                tableSearch.value = urlParams.get('search');
+            }
+            if (urlParams.has('status')) {
+                statusFilter.value = urlParams.get('status');
+            }
+            filterTable();
+
+            tableSearch.addEventListener('input', filterTable);
+            statusFilter.addEventListener('change', filterTable);
+        <?php endif; ?>
+
+        // ================= DETAILED MODAL CONTROLLER =================
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('detailsModal');
+            const closeBtns = [
+                document.getElementById('modalCloseBtn'),
+                document.getElementById('modalCloseFooterBtn')
+            ];
+            const editBtn = document.getElementById('modalEditBtn');
+
+            function showDetail(details) {
+                // Set modal title & company safely using textContent
+                document.getElementById('modalJobTitle').textContent = details.job_title || 'N/A';
+                document.getElementById('modalCompany').textContent = details.company || 'N/A';
+                
+                // Status Badge
+                const statusBadge = document.getElementById('modalStatusBadge');
+                statusBadge.textContent = details.status || 'SAVED';
+                statusBadge.className = 'badge ' + (details.status ? details.status.toLowerCase().replace(/\s+/g, '-') : 'saved');
+
+                // Safe text field setter helper
+                const setField = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (val && val.toString().trim() !== '') {
+                        el.textContent = val;
+                        el.classList.remove('empty');
+                    } else {
+                        el.textContent = 'Not specified';
+                        el.classList.add('empty');
+                    }
+                };
+
+                setField('modalLocation', details.location);
+                setField('modalJobType', details.job_type);
+                setField('modalSalary', details.salary_range);
+                setField('modalPlatform', details.platform);
+                setField('modalDateFound', details.date_found);
+                setField('modalDateApplied', details.date_applied);
+                setField('modalInterviewDate', details.interview_date);
+                setField('modalFollowUpDate', details.follow_up_date);
+
+                // Result field (only if populated)
+                const resultWrapper = document.getElementById('modalResultWrapper');
+                if (details.result && details.result.trim() !== '') {
+                    document.getElementById('modalResult').textContent = details.result;
+                    resultWrapper.style.display = '';
+                } else {
+                    resultWrapper.style.display = 'none';
+                }
+
+                // Technical skills tags
+                const skillsContainer = document.getElementById('modalSkills');
+                skillsContainer.replaceChildren(); // Safe clean method
+                const skillsWrapper = document.getElementById('modalSkillsWrapper');
+                
+                if (details.technical_skills && details.technical_skills.trim() !== '') {
+                    skillsWrapper.style.display = '';
+                    const skills = details.technical_skills.split(',').map(s => s.trim()).filter(Boolean);
+                    skills.forEach(skill => {
+                        const tag = document.createElement('span');
+                        tag.className = 'modal-skill-tag';
+                        tag.textContent = skill;
+                        skillsContainer.appendChild(tag);
+                    });
+                } else {
+                    skillsWrapper.style.display = 'none';
+                }
+
+                // Job Link
+                const linkWrapper = document.getElementById('modalLinkWrapper');
+                const jobLink = document.getElementById('modalJobLink');
+                if (details.job_link && details.job_link.trim() !== '') {
+                    linkWrapper.style.display = '';
+                    jobLink.setAttribute('href', details.job_link);
+                } else {
+                    linkWrapper.style.display = 'none';
+                }
+
+                // Notes / Remark
+                const remarkContainer = document.getElementById('modalRemark');
+                if (details.remark && details.remark.trim() !== '') {
+                    remarkContainer.textContent = details.remark;
+                    remarkContainer.classList.remove('empty');
+                    remarkContainer.style.display = '';
+                } else {
+                    remarkContainer.textContent = 'No additional notes added.';
+                    remarkContainer.classList.add('empty');
+                }
+
+                // Edit button href
+                editBtn.setAttribute('href', 'edit.php?id=' + encodeURIComponent(details.id) + '&back=' + encodeURIComponent(window.location.pathname + window.location.search));
+
+                // Activate modal and lock body scroll
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function hideModal() {
+                modal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+
+            // Event delegation to capture clicks on detail-link anchors
+            document.addEventListener('click', (e) => {
+                const detailLink = e.target.closest('.detail-link');
+                if (detailLink) {
+                    e.preventDefault();
+                    const tr = detailLink.closest('tr');
+                    if (tr) {
+                        const detailDataStr = tr.getAttribute('data-detail');
+                        if (detailDataStr) {
+                            try {
+                                const details = JSON.parse(detailDataStr);
+                                showDetail(details);
+                            } catch (err) {
+                                console.error('Error parsing job detail:', err);
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Intercept Edit and Delete link clicks to append the current page/filter state
+            document.addEventListener('click', (e) => {
+                const editLink = e.target.closest('.action-links a.edit');
+                if (editLink) {
+                    e.preventDefault();
+                    const currentUrl = window.location.pathname + window.location.search;
+                    const href = editLink.getAttribute('href');
+                    window.location.href = href + '&back=' + encodeURIComponent(currentUrl);
+                }
+
+                const deleteLink = e.target.closest('.action-links a.delete');
+                if (deleteLink) {
+                    e.preventDefault();
+                    if (confirm('Delete this application?')) {
+                        const currentUrl = window.location.pathname + window.location.search;
+                        const href = deleteLink.getAttribute('href');
+                        window.location.href = href + '&back=' + encodeURIComponent(currentUrl);
+                    }
+                }
+            });
+
+            // Close buttons click events
+            closeBtns.forEach(btn => {
+                if (btn) btn.addEventListener('click', hideModal);
+            });
+
+            // Close modal by clicking on backdrop
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    hideModal();
+                }
+            });
+
+            // Close modal with ESC key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && modal.classList.contains('active')) {
+                    hideModal();
+                }
+            });
+
+            // ================= TOAST SYSTEM CONTROLLER =================
+            const toastContainer = document.getElementById('toastContainer');
+
+            window.showToast = function(message, type = 'success') {
+                if (!toastContainer) return;
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                
+                let iconSVG = '';
+                if (type === 'success') {
+                    iconSVG = `<svg viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.5; fill: none;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
+                } else if (type === 'info') {
+                    iconSVG = `<svg viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.5; fill: none;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+                } else if (type === 'warning') {
+                    iconSVG = `<svg viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.5; fill: none;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+                } else {
+                    iconSVG = `<svg viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.5; fill: none;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
+                }
+
+                toast.innerHTML = `
+                    <div class="toast-content">
+                        <div class="toast-icon">${iconSVG}</div>
+                        <span class="toast-message">${message}</span>
+                    </div>
+                    <button class="toast-close" aria-label="Close message">
+                        <svg viewBox="0 0 24 24">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                `;
+
+                toastContainer.appendChild(toast);
+
+                // Auto-slide-in transition
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, 50);
+
+                // Setup dismiss handlers
+                const closeBtn = toast.querySelector('.toast-close');
+                const dismissToast = () => {
+                    toast.classList.remove('show');
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 400);
+                };
+
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', dismissToast);
+                }
+
+                // Auto hide after 5 seconds
+                setTimeout(dismissToast, 5000);
+            };
+
+            // ================= NOTIFICATION BELL & DROPDOWN =================
+            const bellBtn = document.getElementById('notificationBell');
+            const dropdown = document.getElementById('notificationDropdown');
+
+            if (bellBtn && dropdown) {
+                // Bell click toggling
+                bellBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('active');
+                });
+
+                // Dismiss bell dropdown on click outside
+                document.addEventListener('click', (e) => {
+                    if (!dropdown.contains(e.target) && e.target !== bellBtn && !bellBtn.contains(e.target)) {
+                        dropdown.classList.remove('active');
+                    }
+                });
+
+                // Dropdown notification item clicks -> open detailed modal instantly
+                const notifItems = dropdown.querySelectorAll('.notification-item');
+                notifItems.forEach(item => {
+                    item.addEventListener('click', () => {
+                        dropdown.classList.remove('active');
+                        const detailStr = item.getAttribute('data-app-detail');
+                        if (detailStr) {
+                            try {
+                                const details = JSON.parse(detailStr);
+                                showDetail(details);
+                            } catch (err) {
+                                console.error('Error parsing notification job detail:', err);
+                            }
+                        }
+                    });
+                });
+            }
+
+            // ================= HTML5 NATIVE DESKTOP NOTIFICATIONS =================
+            const enablePushBtn = document.getElementById('enablePushBtn');
+            
+            // Check native notification status on load to set button text
+            function updatePushBtnText() {
+                if (!enablePushBtn) return;
+                if (!("Notification" in window)) {
+                    enablePushBtn.style.display = 'none';
+                    return;
+                }
+                if (Notification.permission === 'granted') {
+                    enablePushBtn.textContent = 'Push Enabled ✓';
+                    enablePushBtn.style.opacity = '0.6';
+                    enablePushBtn.style.pointerEvents = 'none';
+                } else if (Notification.permission === 'denied') {
+                    enablePushBtn.textContent = 'Push Blocked';
+                    enablePushBtn.style.opacity = '0.6';
+                    enablePushBtn.style.pointerEvents = 'none';
+                }
+            }
+            updatePushBtnText();
+
+            if (enablePushBtn) {
+                enablePushBtn.addEventListener('click', () => {
+                    if (!("Notification" in window)) {
+                        showToast('Desktop notifications are not supported in this browser.', 'warning');
+                        return;
+                    }
+
+                    Notification.requestPermission().then(permission => {
+                        updatePushBtnText();
+                        if (permission === 'granted') {
+                            showToast('Desktop notifications successfully enabled!', 'success');
+                            // Trigger welcome push
+                            new Notification('Job Tracker notifications active!', {
+                                body: 'You will now receive desktop alerts for upcoming interviews and follow-up deadlines!',
+                                icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
+                            });
+                        } else {
+                            showToast('Notifications permission was denied.', 'warning');
+                        }
+                    });
+                });
+            }
+
+            // Automatic native push for Today's critical events on load
+            if ("Notification" in window && Notification.permission === 'granted') {
+                const todayInterviewsCount = <?= count(array_filter($reminders, fn($r) => $r['type'] === 'today_interview')) ?>;
+                const todayFollowupsCount = <?= count(array_filter($reminders, fn($r) => $r['type'] === 'today_followup')) ?>;
+                
+                if (todayInterviewsCount > 0 || todayFollowupsCount > 0) {
+                    let notifBody = '';
+                    if (todayInterviewsCount > 0 && todayFollowupsCount > 0) {
+                        notifBody = `You have ${todayInterviewsCount} interview(s) and ${todayFollowupsCount} follow-up(s) scheduled for today!`;
+                    } else if (todayInterviewsCount > 0) {
+                        notifBody = `Reminder: You have ${todayInterviewsCount} interview(s) scheduled today! Good luck!`;
+                    } else {
+                        notifBody = `Reminder: You have ${todayFollowupsCount} application follow-up(s) scheduled today.`;
+                    }
+
+                    new Notification('Daily Job Reminders', {
+                        body: notifBody,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
+                    });
+                }
+            }
+        });
+    </script>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer"></div>
+
+    <!-- Active Redirection Session Toast Trigger -->
+    <?php if ($sessionNotification): ?>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                if (typeof showToast === 'function') {
+                    showToast(
+                        <?= json_encode($sessionNotification['message']) ?>, 
+                        <?= json_encode($sessionNotification['type']) ?>
+                    );
+                }
+            });
+        </script>
+    <?php endif; ?>
+</body>
+</html>
