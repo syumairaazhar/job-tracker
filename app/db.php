@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS settings (
     setting_value TEXT
 )
 ");
+
+    $pdo->exec("
+CREATE TABLE IF NOT EXISTS dismissed_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    application_id INTEGER NOT NULL,
+    notification_type TEXT NOT NULL,
+    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(application_id, notification_type)
+)
+");
 } catch (PDOException $e) {
     die("Database connection failed: " . $e->getMessage());
 }

@@ -43,6 +43,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $assessment_link = trim($_POST['assessment_link'] ?? '');
     $assessment_notes = trim($_POST['assessment_notes'] ?? '');
 
+    // Auto-promote assessment_status to 'Pending' if a deadline is set but status was left as 'None'
+    if (!empty($assessment_deadline) && $assessment_status === 'None') {
+        $assessment_status = 'Pending';
+    }
+
     // Server-side validation
     if (empty($company) || empty($job_title)) {
         $error = 'Company name and job title are required.';

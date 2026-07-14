@@ -82,6 +82,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $assessment_link = trim($_POST['assessment_link'] ?? '');
     $assessment_notes = trim($_POST['assessment_notes'] ?? '');
 
+    // Auto-promote assessment_status to 'Pending' if a deadline is set but status was left as 'None'
+    if (!empty($assessment_deadline) && $assessment_status === 'None') {
+        $assessment_status = 'Pending';
+    }
+
     // Server-side validation
     if (empty($company) || empty($job_title)) {
         $error = 'Company name and job title are required.';
@@ -115,6 +120,34 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $assessment_notes ?: null,
             $id
         ]);
+
+        // Clear dismissed notifications for this application when dates change.
+        // This allows notifications to reappear if the user updates a date.
+        $typesToClear = [];
+
+        if ($interview_date !== ($app['interview_date'] ?? '')) {
+            $typesToClear[] = 'overdue_interview';
+            $typesToClear[] = 'today_interview';
+            $typesToClear[] = 'tomorrow_interview';
+        }
+        if ($follow_up_date !== ($app['follow_up_date'] ?? '')) {
+            $typesToClear[] = 'overdue_followup';
+            $typesToClear[] = 'today_followup';
+            $typesToClear[] = 'tomorrow_followup';
+        }
+        if ($assessment_deadline !== ($app['assessment_deadline'] ?? '')) {
+            $typesToClear[] = 'overdue_assessment';
+            $typesToClear[] = 'today_assessment';
+            $typesToClear[] = 'tomorrow_assessment';
+        }
+
+        if (!empty($typesToClear)) {
+            $placeholders = implode(',', array_fill(0, count($typesToClear), '?'));
+            $clearStmt = $pdo->prepare(
+                "DELETE FROM dismissed_notifications WHERE application_id = ? AND notification_type IN ($placeholders)"
+            );
+            $clearStmt->execute(array_merge([$id], $typesToClear));
+        }
 
         $updatedAppData = [
             'id' => $id,

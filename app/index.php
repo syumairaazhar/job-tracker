@@ -65,6 +65,13 @@ $todayStr = date('Y-m-d');
 $tomorrowStr = date('Y-m-d', strtotime('+1 day'));
 $reminders = [];
 
+// Fetch dismissed notifications to filter them out
+$dismissedSet = [];
+$dismissedStmt = $pdo->query("SELECT application_id, notification_type FROM dismissed_notifications");
+foreach ($dismissedStmt->fetchAll(PDO::FETCH_ASSOC) as $d) {
+    $dismissedSet[$d['application_id'] . '|' . $d['notification_type']] = true;
+}
+
 /**
  * Serialize application detail for JSON modal data.
  */
@@ -102,8 +109,10 @@ $overdueInterviewsStmt = $pdo->prepare("
 ");
 $overdueInterviewsStmt->execute([$todayStr]);
 foreach ($overdueInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|overdue_interview'])) continue;
     $reminders[] = [
         'type' => 'overdue_interview',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "Interview outcome update needed for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Scheduled: " . htmlspecialchars($row['interview_date'])
@@ -118,8 +127,10 @@ $overdueFollowupsStmt = $pdo->prepare("
 ");
 $overdueFollowupsStmt->execute([$todayStr]);
 foreach ($overdueFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|overdue_followup'])) continue;
     $reminders[] = [
         'type' => 'overdue_followup',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "Overdue follow-up for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Scheduled: " . htmlspecialchars($row['follow_up_date'])
@@ -133,8 +144,10 @@ $todayInterviewsStmt = $pdo->prepare("
 ");
 $todayInterviewsStmt->execute([$todayStr]);
 foreach ($todayInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|today_interview'])) continue;
     $reminders[] = [
         'type' => 'today_interview',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "🔔 Interview scheduled today for <strong>" . htmlspecialchars($row['company']) . "</strong>!",
         'time' => "Today"
@@ -148,8 +161,10 @@ $todayFollowupsStmt = $pdo->prepare("
 ");
 $todayFollowupsStmt->execute([$todayStr]);
 foreach ($todayFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|today_followup'])) continue;
     $reminders[] = [
         'type' => 'today_followup',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "📅 Follow-up scheduled today for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Today"
@@ -163,8 +178,10 @@ $tomorrowInterviewsStmt = $pdo->prepare("
 ");
 $tomorrowInterviewsStmt->execute([$tomorrowStr]);
 foreach ($tomorrowInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|tomorrow_interview'])) continue;
     $reminders[] = [
         'type' => 'tomorrow_interview',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "Upcoming interview tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Tomorrow"
@@ -178,57 +195,71 @@ $tomorrowFollowupsStmt = $pdo->prepare("
 ");
 $tomorrowFollowupsStmt->execute([$tomorrowStr]);
 foreach ($tomorrowFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|tomorrow_followup'])) continue;
     $reminders[] = [
         'type' => 'tomorrow_followup',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "Upcoming follow-up tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Tomorrow"
     ];
 }
 
-// 7. Overdue Assessments (Status Pending, Deadline past)
+// 7. Overdue Assessments (Deadline past, not yet completed)
 $overdueAssessmentsStmt = $pdo->prepare("
     SELECT * FROM applications 
-    WHERE assessment_status = 'Pending' AND assessment_deadline < ? 
+    WHERE assessment_status != 'Completed'
+      AND assessment_deadline IS NOT NULL AND assessment_deadline != ''
+      AND assessment_deadline < ? 
     ORDER BY assessment_deadline DESC
 ");
 $overdueAssessmentsStmt->execute([$todayStr]);
 foreach ($overdueAssessmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|overdue_assessment'])) continue;
     $reminders[] = [
         'type' => 'overdue_assessment',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "Overdue assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Deadline: " . htmlspecialchars($row['assessment_deadline'])
     ];
 }
 
-// 8. Today's Assessments
+// 8. Today's Assessments (due today, not completed)
 $todayAssessmentsStmt = $pdo->prepare("
     SELECT * FROM applications 
-    WHERE assessment_status = 'Pending' AND assessment_deadline = ?
+    WHERE assessment_status != 'Completed'
+      AND assessment_deadline IS NOT NULL AND assessment_deadline != ''
+      AND assessment_deadline = ?
 ");
 $todayAssessmentsStmt->execute([$todayStr]);
 foreach ($todayAssessmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|today_assessment'])) continue;
     $reminders[] = [
         'type' => 'today_assessment',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
         'message' => "📝 Assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) due today for <strong>" . htmlspecialchars($row['company']) . "</strong>!",
         'time' => "Today"
     ];
 }
 
-// 9. Tomorrow's Assessments
+// 9. Tomorrow's Assessments (due tomorrow, not completed)
 $tomorrowAssessmentsStmt = $pdo->prepare("
     SELECT * FROM applications 
-    WHERE assessment_status = 'Pending' AND assessment_deadline = ?
+    WHERE assessment_status != 'Completed'
+      AND assessment_deadline IS NOT NULL AND assessment_deadline != ''
+      AND assessment_deadline = ?
 ");
 $tomorrowAssessmentsStmt->execute([$tomorrowStr]);
 foreach ($tomorrowAssessmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (isset($dismissedSet[$row['id'] . '|tomorrow_assessment'])) continue;
     $reminders[] = [
         'type' => 'tomorrow_assessment',
+        'app_id' => (int)$row['id'],
         'detail' => serializeAppDetail($row),
-        'message' => "Upcoming assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
-        'time' => "Tomorrow"
+        'message' => "⏰ Assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) due tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Tomorrow — " . htmlspecialchars($row['assessment_deadline'])
     ];
 }
 
@@ -400,7 +431,12 @@ foreach ($jobTypeData as $item) {
                         <div class="notification-dropdown" id="notificationDropdown">
                             <div class="notification-dropdown-header">
                                 <span class="notification-dropdown-title">Reminders (<?= count($reminders) ?>)</span>
-                                <button class="notification-dropdown-enable" id="enablePushBtn">Enable Push</button>
+                                <div class="notification-header-actions">
+                                    <?php if (count($reminders) > 0): ?>
+                                        <button class="notification-dropdown-clear" id="clearAllNotifBtn" title="Dismiss all notifications">Clear All</button>
+                                    <?php endif; ?>
+                                    <button class="notification-dropdown-enable" id="enablePushBtn">Enable Push</button>
+                                </div>
                             </div>
                             <div class="notification-list">
                                 <?php if (count($reminders) === 0): ?>
@@ -420,18 +456,23 @@ foreach ($jobTypeData as $item) {
                                             $dotClass = 'interview';
                                         }
                                     ?>
-                                        <div class="notification-item" data-app-detail='<?= $rem['detail'] ?>'>
+                                        <div class="notification-item" data-app-detail='<?= $rem['detail'] ?>' data-app-id="<?= (int)$rem['app_id'] ?>" data-notif-type="<?= htmlspecialchars($rem['type']) ?>">
                                             <span class="notification-item-dot <?= $dotClass ?>"></span>
                                             <div class="notification-item-body">
                                                 <span class="notification-item-text"><?= $rem['message'] ?></span>
                                                 <span class="notification-item-time"><?= htmlspecialchars($rem['time']) ?></span>
                                             </div>
+                                            <button class="notification-dismiss-btn" title="Dismiss this notification" aria-label="Dismiss notification">
+                                                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                            </button>
                                         </div>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </div>
                         </div>
                     </div>
+                    <!-- CSRF token for notification dismiss AJAX -->
+                    <input type="hidden" id="csrfToken" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                     
                     <a href="add.php" class="btn">+ Add Application</a>
                 </div>
@@ -512,24 +553,7 @@ foreach ($jobTypeData as $item) {
                                         <?php 
                                         $recentApps = array_slice($applications, 0, 5);
                                         foreach ($recentApps as $row):
-                                            $detailData = json_encode([
-                                                'id' => (int)$row['id'],
-                                                'company' => $row['company'],
-                                                'job_title' => $row['job_title'],
-                                                'location' => $row['location'] ?: '',
-                                                'job_type' => $row['job_type'] ?: '',
-                                                'salary_range' => $row['salary_range'] ?: '',
-                                                'date_found' => $row['date_found'] ?: '',
-                                                'date_applied' => $row['date_applied'] ?: '',
-                                                'interview_date' => $row['interview_date'] ?: '',
-                                                'follow_up_date' => $row['follow_up_date'] ?: '',
-                                                'platform' => $row['platform'] ?: '',
-                                                'status' => $row['status'],
-                                                'result' => $row['result'] ?: '',
-                                                'technical_skills' => $row['technical_skills'] ?: '',
-                                                'job_link' => $row['job_link'] ?: '',
-                                                'remark' => $row['remark'] ?: '',
-                                            ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+                                            $detailData = serializeAppDetail($row);
                                         ?>
                                             <tr class="status-<?= getStatusClass($row['status']) ?>" data-detail='<?= $detailData ?>'>
                                                 <td class="searchable"><a href="javascript:void(0)" class="detail-link"><?= htmlspecialchars($row['company']) ?></a></td>
@@ -609,7 +633,7 @@ foreach ($jobTypeData as $item) {
                                     <line x1="12" y1="11" x2="12" y2="17"/>
                                     <line x1="9" y1="14" x2="15" y2="14"/>
                                 </svg>
-                                Export Excel
+                                <span class="export-label">Export Excel</span>
                             </a>
                         </div>
                     </div>
@@ -634,24 +658,7 @@ foreach ($jobTypeData as $item) {
                                 </thead>
                                 <tbody>
                                     <?php foreach ($applications as $row):
-                                        $detailData = json_encode([
-                                            'id' => (int)$row['id'],
-                                            'company' => $row['company'],
-                                            'job_title' => $row['job_title'],
-                                            'location' => $row['location'] ?: '',
-                                            'job_type' => $row['job_type'] ?: '',
-                                            'salary_range' => $row['salary_range'] ?: '',
-                                            'date_found' => $row['date_found'] ?: '',
-                                            'date_applied' => $row['date_applied'] ?: '',
-                                            'interview_date' => $row['interview_date'] ?: '',
-                                            'follow_up_date' => $row['follow_up_date'] ?: '',
-                                            'platform' => $row['platform'] ?: '',
-                                            'status' => $row['status'],
-                                            'result' => $row['result'] ?: '',
-                                            'technical_skills' => $row['technical_skills'] ?: '',
-                                            'job_link' => $row['job_link'] ?: '',
-                                            'remark' => $row['remark'] ?: '',
-                                        ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+                                        $detailData = serializeAppDetail($row);
                                     ?>
                                         <tr class="app-row status-<?= getStatusClass($row['status']) ?>" data-status="<?= htmlspecialchars($row['status']) ?>" data-detail='<?= $detailData ?>'>
                                             <td class="searchable"><a href="javascript:void(0)" class="detail-link"><?= htmlspecialchars($row['company']) ?></a></td>
@@ -735,75 +742,130 @@ foreach ($jobTypeData as $item) {
             </div>
             
             <div class="modal-content">
-                <!-- Core Details Grid -->
-                <div class="modal-grid">
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Location</span>
-                        <span id="modalLocation" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Job Type</span>
-                        <span id="modalJobType" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Salary Range</span>
-                        <span id="modalSalary" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Platform / Channel</span>
-                        <span id="modalPlatform" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Date Found</span>
-                        <span id="modalDateFound" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Date Applied</span>
-                        <span id="modalDateApplied" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Interview Date</span>
-                        <span id="modalInterviewDate" class="modal-info-value"></span>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Follow-up Date</span>
-                        <span id="modalFollowUpDate" class="modal-info-value"></span>
+                <!-- 📋 Job Details Section -->
+                <div class="modal-section-group">
+                    <span class="modal-section-title">📋 Job Details</span>
+                    <div class="modal-grid">
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Location</span>
+                            <span id="modalLocation" class="modal-info-value"></span>
+                        </div>
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Job Type</span>
+                            <span id="modalJobType" class="modal-info-value"></span>
+                        </div>
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Salary Range</span>
+                            <span id="modalSalary" class="modal-info-value"></span>
+                        </div>
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Platform / Channel</span>
+                            <span id="modalPlatform" class="modal-info-value"></span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Result (if available) -->
-                <div id="modalResultWrapper" class="modal-info-item" style="display: none;">
-                    <span class="modal-info-label">Application Result</span>
-                    <span id="modalResult" class="modal-info-value" style="font-weight: 700;"></span>
+                <!-- 📅 Timeline Section -->
+                <div class="modal-section-group">
+                    <span class="modal-section-title">📅 Timeline</span>
+                    <div class="modal-grid">
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Date Found</span>
+                            <span id="modalDateFound" class="modal-info-value"></span>
+                        </div>
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Date Applied</span>
+                            <span id="modalDateApplied" class="modal-info-value"></span>
+                        </div>
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Interview Date</span>
+                            <span id="modalInterviewDate" class="modal-info-value"></span>
+                        </div>
+                        <div class="modal-info-item">
+                            <span class="modal-info-label">Follow-up Date</span>
+                            <span id="modalFollowUpDate" class="modal-info-value"></span>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Technical Skills -->
-                <div id="modalSkillsWrapper" class="modal-info-item" style="display: none;">
-                    <span class="modal-section-title">Technical Skills</span>
+                <!-- 📝 Assessment Section (hidden when None) -->
+                <div id="modalAssessmentSection" class="modal-section-group" style="display: none;">
+                    <div class="modal-assessment-card">
+                        <span class="modal-section-title">📝 Assessment</span>
+                        <div class="modal-grid">
+                            <div class="modal-info-item">
+                                <span class="modal-info-label">Status</span>
+                                <span id="modalAssessmentStatus" class="modal-assessment-badge"></span>
+                            </div>
+                            <div class="modal-info-item">
+                                <span class="modal-info-label">Type</span>
+                                <span id="modalAssessmentType" class="modal-info-value"></span>
+                            </div>
+                            <div class="modal-info-item">
+                                <span class="modal-info-label">Deadline</span>
+                                <span id="modalAssessmentDeadline" class="modal-info-value"></span>
+                            </div>
+                            <div id="modalAssessmentLinkWrapper" class="modal-info-item" style="display: none;">
+                                <span class="modal-info-label">Assessment Link</span>
+                                <a id="modalAssessmentLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 6px 14px; font-size: 12px;">
+                                    <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 5px;">
+                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                        <polyline points="15 3 21 3 21 9"></polyline>
+                                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                                    </svg>
+                                    Open Assessment
+                                </a>
+                            </div>
+                        </div>
+                        <div id="modalAssessmentNotesWrapper" class="modal-info-item" style="display: none; margin-top: 14px;">
+                            <span class="modal-info-label">Assessment Notes</span>
+                            <div id="modalAssessmentNotes" class="modal-assessment-notes"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 🏆 Result (if available) -->
+                <div id="modalResultWrapper" class="modal-section-group" style="display: none;">
+                    <span class="modal-section-title">🏆 Result</span>
+                    <div class="modal-info-item">
+                        <span id="modalResult" class="modal-info-value" style="font-weight: 700;"></span>
+                    </div>
+                </div>
+
+                <!-- 🛠 Technical Skills -->
+                <div id="modalSkillsWrapper" class="modal-section-group" style="display: none;">
+                    <span class="modal-section-title">🛠 Technical Skills</span>
                     <div id="modalSkills" class="modal-skills-list"></div>
                 </div>
 
-                <!-- Job Listing Link -->
-                <div id="modalLinkWrapper" class="modal-info-item" style="display: none;">
-                    <span class="modal-section-title">Job Link</span>
-                    <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 8px 16px; font-size: 13px;">
-                        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                        View Original Posting
-                    </a>
-                </div>
-
-                <!-- Notes / Remark -->
-                <div class="modal-info-item">
-                    <span class="modal-section-title">Notes & Remarks</span>
-                    <div id="modalRemark" class="modal-remark-card"></div>
+                <!-- 🔗 Links & Notes -->
+                <div class="modal-section-group">
+                    <span class="modal-section-title">🔗 Links & Notes</span>
+                    <div id="modalLinkWrapper" class="modal-info-item" style="display: none;">
+                        <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 8px 16px; font-size: 13px;">
+                            <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                            View Original Posting
+                        </a>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Notes & Remarks</span>
+                        <div id="modalRemark" class="modal-remark-card"></div>
+                    </div>
                 </div>
             </div>
 
             <div class="modal-footer">
+                <button id="modalDismissNotifBtn" class="btn warning" style="display: none;">
+                    <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    Dismiss Notification
+                </button>
                 <a id="modalEditBtn" href="" class="btn">Edit Application</a>
                 <button id="modalCloseFooterBtn" class="btn secondary">Close</button>
             </div>
@@ -1116,8 +1178,9 @@ foreach ($jobTypeData as $item) {
                 document.getElementById('modalCloseFooterBtn')
             ];
             const editBtn = document.getElementById('modalEditBtn');
+            const dismissNotifBtn = document.getElementById('modalDismissNotifBtn');
 
-            function showDetail(details) {
+            function showDetail(details, appId = null, notifType = null) {
                 // Set modal title & company safely using textContent
                 document.getElementById('modalJobTitle').textContent = details.job_title || 'N/A';
                 document.getElementById('modalCompany').textContent = details.company || 'N/A';
@@ -1147,6 +1210,47 @@ foreach ($jobTypeData as $item) {
                 setField('modalDateApplied', details.date_applied);
                 setField('modalInterviewDate', details.interview_date);
                 setField('modalFollowUpDate', details.follow_up_date);
+
+                // Assessment Section (show only when not 'None')
+                const assessmentSection = document.getElementById('modalAssessmentSection');
+                const aStatus = (details.assessment_status || 'None').trim();
+                
+                if (aStatus !== 'None' && aStatus !== '') {
+                    assessmentSection.style.display = '';
+                    
+                    // Status badge
+                    const statusBadgeEl = document.getElementById('modalAssessmentStatus');
+                    statusBadgeEl.textContent = aStatus;
+                    statusBadgeEl.className = 'modal-assessment-badge ' + aStatus.toLowerCase();
+                    
+                    // Type
+                    setField('modalAssessmentType', details.assessment_type);
+                    
+                    // Deadline
+                    setField('modalAssessmentDeadline', details.assessment_deadline);
+                    
+                    // Assessment Link
+                    const aLinkWrapper = document.getElementById('modalAssessmentLinkWrapper');
+                    const aLink = document.getElementById('modalAssessmentLink');
+                    if (details.assessment_link && details.assessment_link.trim() !== '') {
+                        aLinkWrapper.style.display = '';
+                        aLink.setAttribute('href', details.assessment_link);
+                    } else {
+                        aLinkWrapper.style.display = 'none';
+                    }
+                    
+                    // Assessment Notes
+                    const aNotesWrapper = document.getElementById('modalAssessmentNotesWrapper');
+                    const aNotesEl = document.getElementById('modalAssessmentNotes');
+                    if (details.assessment_notes && details.assessment_notes.trim() !== '') {
+                        aNotesWrapper.style.display = '';
+                        aNotesEl.textContent = details.assessment_notes;
+                    } else {
+                        aNotesWrapper.style.display = 'none';
+                    }
+                } else {
+                    assessmentSection.style.display = 'none';
+                }
 
                 // Result field (only if populated)
                 const resultWrapper = document.getElementById('modalResultWrapper');
@@ -1199,9 +1303,59 @@ foreach ($jobTypeData as $item) {
                 // Edit button href
                 editBtn.setAttribute('href', 'edit.php?id=' + encodeURIComponent(details.id) + '&back=' + encodeURIComponent(window.location.pathname + window.location.search));
 
+                // Handle Notification Dismiss button in modal
+                if (dismissNotifBtn) {
+                    let activeNotifEl = null;
+                    let targetNotifType = notifType;
+                    let targetAppId = appId || details.id;
+
+                    const dropdownEl = document.getElementById('notificationDropdown');
+                    if (dropdownEl) {
+                        if (targetNotifType) {
+                            activeNotifEl = dropdownEl.querySelector(`.notification-item[data-app-id="${targetAppId}"][data-notif-type="${targetNotifType}"]`);
+                        } else {
+                            activeNotifEl = dropdownEl.querySelector(`.notification-item[data-app-id="${targetAppId}"]`);
+                        }
+                    }
+
+                    if (activeNotifEl) {
+                        dismissNotifBtn.style.display = 'inline-flex';
+                        dismissNotifBtn.setAttribute('data-app-id', activeNotifEl.getAttribute('data-app-id'));
+                        dismissNotifBtn.setAttribute('data-notif-type', activeNotifEl.getAttribute('data-notif-type'));
+                    } else if (appId && notifType) {
+                        dismissNotifBtn.style.display = 'inline-flex';
+                        dismissNotifBtn.setAttribute('data-app-id', appId);
+                        dismissNotifBtn.setAttribute('data-notif-type', notifType);
+                    } else {
+                        dismissNotifBtn.style.display = 'none';
+                        dismissNotifBtn.removeAttribute('data-app-id');
+                        dismissNotifBtn.removeAttribute('data-notif-type');
+                    }
+                }
+
                 // Activate modal and lock body scroll
                 modal.classList.add('active');
                 document.body.style.overflow = 'hidden';
+            }
+
+            window.showDetail = showDetail;
+
+            if (dismissNotifBtn) {
+                dismissNotifBtn.addEventListener('click', () => {
+                    const appId = dismissNotifBtn.getAttribute('data-app-id');
+                    const notifType = dismissNotifBtn.getAttribute('data-notif-type');
+                    if (appId && notifType) {
+                        const dropdownEl = document.getElementById('notificationDropdown');
+                        const itemEl = dropdownEl ? dropdownEl.querySelector(`.notification-item[data-app-id="${appId}"][data-notif-type="${notifType}"]`) : null;
+                        
+                        if (typeof dismissNotification === 'function') {
+                            dismissNotification(appId, notifType, itemEl);
+                        }
+                        
+                        dismissNotifBtn.style.display = 'none';
+                        hideModal();
+                    }
+                });
             }
 
             function hideModal() {
@@ -1328,6 +1482,93 @@ foreach ($jobTypeData as $item) {
             // ================= NOTIFICATION BELL & DROPDOWN =================
             const bellBtn = document.getElementById('notificationBell');
             const dropdown = document.getElementById('notificationDropdown');
+            const csrfTokenEl = document.getElementById('csrfToken');
+            const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+
+            /**
+             * Dismiss a single notification via AJAX POST.
+             */
+            function dismissNotification(appId, notifType, itemEl) {
+                const formData = new FormData();
+                formData.append('action', 'dismiss');
+                formData.append('app_id', appId);
+                formData.append('type', notifType);
+                formData.append('token', csrfToken);
+
+                fetch('dismiss_notification.php', {
+                    method: 'POST',
+                    body: formData
+                }).then(res => res.json()).then(data => {
+                    if (data.success) {
+                        if (itemEl) {
+                            // Animate removal
+                            itemEl.style.transition = 'opacity 0.3s ease, max-height 0.3s ease, padding 0.3s ease';
+                            itemEl.style.opacity = '0';
+                            itemEl.style.maxHeight = '0';
+                            itemEl.style.paddingTop = '0';
+                            itemEl.style.paddingBottom = '0';
+                            itemEl.style.overflow = 'hidden';
+                            setTimeout(() => {
+                                itemEl.remove();
+                                updateNotificationCount();
+                            }, 300);
+                        } else {
+                            updateNotificationCount();
+                        }
+                    }
+                }).catch(() => {
+                    // Silently fail - notification stays visible
+                });
+            }
+
+            /**
+             * Update the notification badge count and title after dismissals.
+             */
+            function updateNotificationCount() {
+                const remainingItems = dropdown ? dropdown.querySelectorAll('.notification-item') : [];
+                const count = remainingItems.length;
+
+                // Update badge
+                const badge = bellBtn ? bellBtn.querySelector('.notification-badge') : null;
+                if (badge) {
+                    if (count > 0) {
+                        badge.textContent = count;
+                    } else {
+                        badge.remove();
+                    }
+                }
+
+                // Update dropdown title
+                const titleEl = dropdown ? dropdown.querySelector('.notification-dropdown-title') : null;
+                if (titleEl) {
+                    titleEl.textContent = 'Reminders (' + count + ')';
+                }
+
+                // If no notifications left, show empty state
+                if (count === 0) {
+                    const listEl = dropdown ? dropdown.querySelector('.notification-list') : null;
+                    if (listEl) {
+                        listEl.replaceChildren(); // Safe DOM clear
+
+                        const emptyDiv = document.createElement('div');
+                        emptyDiv.className = 'notification-dropdown-empty';
+
+                        const svgMarkup = '<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
+                        const svgDoc = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
+                        emptyDiv.appendChild(svgDoc.documentElement);
+
+                        const p = document.createElement('p');
+                        p.textContent = 'All caught up! No notifications or overdue follow-ups.';
+                        emptyDiv.appendChild(p);
+
+                        listEl.appendChild(emptyDiv);
+                    }
+
+                    // Hide Clear All button
+                    const clearBtn = document.getElementById('clearAllNotifBtn');
+                    if (clearBtn) clearBtn.style.display = 'none';
+                }
+            }
 
             if (bellBtn && dropdown) {
                 // Bell click toggling
@@ -1344,21 +1585,85 @@ foreach ($jobTypeData as $item) {
                 });
 
                 // Dropdown notification item clicks -> open detailed modal instantly
+                // (but not if the dismiss button was clicked)
                 const notifItems = dropdown.querySelectorAll('.notification-item');
                 notifItems.forEach(item => {
-                    item.addEventListener('click', () => {
+                    item.addEventListener('click', (e) => {
+                        // Ignore if dismiss button was clicked
+                        if (e.target.closest('.notification-dismiss-btn')) return;
+
                         dropdown.classList.remove('active');
                         const detailStr = item.getAttribute('data-app-detail');
+                        const appId = item.getAttribute('data-app-id');
+                        const notifType = item.getAttribute('data-notif-type');
                         if (detailStr) {
                             try {
                                 const details = JSON.parse(detailStr);
-                                showDetail(details);
+                                showDetail(details, appId, notifType);
                             } catch (err) {
                                 console.error('Error parsing notification job detail:', err);
                             }
                         }
                     });
+
+                    // Dismiss button click handler
+                    const dismissBtn = item.querySelector('.notification-dismiss-btn');
+                    if (dismissBtn) {
+                        dismissBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const appId = item.getAttribute('data-app-id');
+                            const notifType = item.getAttribute('data-notif-type');
+                            if (appId && notifType) {
+                                dismissNotification(appId, notifType, item);
+                            }
+                        });
+                    }
                 });
+
+                // Clear All button handler
+                const clearAllBtn = document.getElementById('clearAllNotifBtn');
+                if (clearAllBtn) {
+                    clearAllBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const items = dropdown.querySelectorAll('.notification-item');
+                        if (items.length === 0) return;
+
+                        // Collect all notification data for bulk dismiss
+                        const notifications = [];
+                        items.forEach(item => {
+                            notifications.push({
+                                app_id: item.getAttribute('data-app-id'),
+                                type: item.getAttribute('data-notif-type')
+                            });
+                        });
+
+                        const formData = new FormData();
+                        formData.append('action', 'dismiss_all');
+                        formData.append('notifications', JSON.stringify(notifications));
+                        formData.append('token', csrfToken);
+
+                        fetch('dismiss_notification.php', {
+                            method: 'POST',
+                            body: formData
+                        }).then(res => res.json()).then(data => {
+                            if (data.success) {
+                                items.forEach(item => {
+                                    item.style.transition = 'opacity 0.25s ease, max-height 0.25s ease';
+                                    item.style.opacity = '0';
+                                    item.style.maxHeight = '0';
+                                    item.style.overflow = 'hidden';
+                                });
+                                setTimeout(() => {
+                                    items.forEach(item => item.remove());
+                                    updateNotificationCount();
+                                    if (typeof showToast === 'function') {
+                                        showToast('All notifications dismissed.', 'info');
+                                    }
+                                }, 300);
+                            }
+                        }).catch(() => {});
+                    });
+                }
             }
 
             // ================= HTML5 NATIVE DESKTOP NOTIFICATIONS =================
@@ -1406,26 +1711,42 @@ foreach ($jobTypeData as $item) {
                 });
             }
 
-            // Automatic native push for Today's critical events on load
+            // Automatic native push for critical events on load
             if ("Notification" in window && Notification.permission === 'granted') {
-                const todayInterviewsCount = <?= count(array_filter($reminders, fn($r) => $r['type'] === 'today_interview')) ?>;
-                const todayFollowupsCount = <?= count(array_filter($reminders, fn($r) => $r['type'] === 'today_followup')) ?>;
-                
-                if (todayInterviewsCount > 0 || todayFollowupsCount > 0) {
-                    let notifBody = '';
-                    if (todayInterviewsCount > 0 && todayFollowupsCount > 0) {
-                        notifBody = `You have ${todayInterviewsCount} interview(s) and ${todayFollowupsCount} follow-up(s) scheduled for today!`;
-                    } else if (todayInterviewsCount > 0) {
-                        notifBody = `Reminder: You have ${todayInterviewsCount} interview(s) scheduled today! Good luck!`;
-                    } else {
-                        notifBody = `Reminder: You have ${todayFollowupsCount} application follow-up(s) scheduled today.`;
-                    }
+                const nativeReminders = <?php
+                    $cleanReminders = array_map(function($r) {
+                        $msg = html_entity_decode(strip_tags($r['message']), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                        return [
+                            'app_id' => (int)$r['app_id'],
+                            'type' => $r['type'],
+                            'message' => $msg,
+                            'time' => $r['time'],
+                            'detail' => $r['detail']
+                        ];
+                    }, $reminders);
+                    echo json_encode($cleanReminders);
+                ?>;
 
-                    new Notification('Daily Job Reminders', {
-                        body: notifBody,
-                        icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
+                nativeReminders.forEach(rem => {
+                    const title = 'Job Tracker: ' + (rem.type.includes('interview') ? 'Interview Reminder' : (rem.type.includes('assessment') ? 'Assessment Deadline' : 'Follow-up Reminder'));
+                    
+                    const notif = new Notification(title, {
+                        body: rem.message + ' (' + rem.time + ')',
+                        icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                        tag: 'notif-' + rem.app_id + '-' + rem.type
                     });
-                }
+
+                    notif.onclick = function(e) {
+                        e.preventDefault();
+                        window.focus();
+                        try {
+                            const details = JSON.parse(rem.detail);
+                            showDetail(details, rem.app_id, rem.type);
+                        } catch (err) {
+                            console.error('Error opening detail modal from push notification:', err);
+                        }
+                    };
+                });
             }
         });
     </script>
