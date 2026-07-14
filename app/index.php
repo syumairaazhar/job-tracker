@@ -22,9 +22,9 @@ $total = $pdo->query("SELECT COUNT(*) FROM applications")->fetchColumn();
 $applied = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Applied'")->fetchColumn();
 $interview = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Interview'")->fetchColumn();
 $offered = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Offered'")->fetchColumn();
-$expired_rejected = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Expired' OR status='Rejected'")->fetchColumn();
-$unlikely = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Unlikely to Progress'")->fetchColumn();
+$expired_rejected = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Expired' OR status='Rejected' OR status='Unlikely to Progress Further'")->fetchColumn();
 $pending = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Pending'")->fetchColumn();
+$pending_assessments = $pdo->query("SELECT COUNT(*) FROM applications WHERE assessment_status='Pending'")->fetchColumn();
 
 // Fetch all applications
 $stmt = $pdo->query("SELECT * FROM applications ORDER BY date_applied DESC, created_at DESC");
@@ -34,10 +34,11 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $filterStatus = $_GET['status'] ?? '';
 $filterJobType = $_GET['job_type'] ?? '';
 $filterPlatform = $_GET['platform'] ?? '';
+$filterAssessmentStatus = $_GET['assessment_status'] ?? '';
 
 if ($filterStatus !== '') {
     if ($filterStatus === 'Expired_Rejected') {
-        $applications = array_filter($applications, fn($row) => $row['status'] === 'Expired' || $row['status'] === 'Rejected');
+        $applications = array_filter($applications, fn($row) => $row['status'] === 'Expired' || $row['status'] === 'Rejected' || $row['status'] === 'Unlikely to Progress Further');
     } else {
         $applications = array_filter($applications, fn($row) => $row['status'] === $filterStatus);
     }
@@ -47,6 +48,9 @@ if ($filterJobType !== '') {
 }
 if ($filterPlatform !== '') {
     $applications = array_filter($applications, fn($row) => $row['platform'] === $filterPlatform);
+}
+if ($filterAssessmentStatus !== '') {
+    $applications = array_filter($applications, fn($row) => ($row['assessment_status'] ?? 'None') === $filterAssessmentStatus);
 }
 
 // Real-time Session Notification Listener
@@ -61,15 +65,11 @@ $todayStr = date('Y-m-d');
 $tomorrowStr = date('Y-m-d', strtotime('+1 day'));
 $reminders = [];
 
-// 1. Overdue Interviews (Date is in the past, but status is still Interview)
-$overdueInterviewsStmt = $pdo->prepare("
-    SELECT * FROM applications 
-    WHERE status = 'Interview' AND interview_date < ? 
-    ORDER BY interview_date DESC
-");
-$overdueInterviewsStmt->execute([$todayStr]);
-foreach ($overdueInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $detailData = json_encode([
+/**
+ * Serialize application detail for JSON modal data.
+ */
+function serializeAppDetail($row) {
+    return json_encode([
         'id' => (int)$row['id'],
         'company' => $row['company'],
         'job_title' => $row['job_title'],
@@ -86,11 +86,25 @@ foreach ($overdueInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         'technical_skills' => $row['technical_skills'] ?: '',
         'job_link' => $row['job_link'] ?: '',
         'remark' => $row['remark'] ?: '',
+        'assessment_status' => $row['assessment_status'] ?? 'None',
+        'assessment_type' => $row['assessment_type'] ?? '',
+        'assessment_deadline' => $row['assessment_deadline'] ?? '',
+        'assessment_link' => $row['assessment_link'] ?? '',
+        'assessment_notes' => $row['assessment_notes'] ?? '',
     ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+}
 
+// 1. Overdue Interviews (Date is in the past, but status is still Interview)
+$overdueInterviewsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE status = 'Interview' AND interview_date < ? 
+    ORDER BY interview_date DESC
+");
+$overdueInterviewsStmt->execute([$todayStr]);
+foreach ($overdueInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     $reminders[] = [
         'type' => 'overdue_interview',
-        'detail' => $detailData,
+        'detail' => serializeAppDetail($row),
         'message' => "Interview outcome update needed for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Scheduled: " . htmlspecialchars($row['interview_date'])
     ];
@@ -104,28 +118,9 @@ $overdueFollowupsStmt = $pdo->prepare("
 ");
 $overdueFollowupsStmt->execute([$todayStr]);
 foreach ($overdueFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $detailData = json_encode([
-        'id' => (int)$row['id'],
-        'company' => $row['company'],
-        'job_title' => $row['job_title'],
-        'location' => $row['location'] ?: '',
-        'job_type' => $row['job_type'] ?: '',
-        'salary_range' => $row['salary_range'] ?: '',
-        'date_found' => $row['date_found'] ?: '',
-        'date_applied' => $row['date_applied'] ?: '',
-        'interview_date' => $row['interview_date'] ?: '',
-        'follow_up_date' => $row['follow_up_date'] ?: '',
-        'platform' => $row['platform'] ?: '',
-        'status' => $row['status'],
-        'result' => $row['result'] ?: '',
-        'technical_skills' => $row['technical_skills'] ?: '',
-        'job_link' => $row['job_link'] ?: '',
-        'remark' => $row['remark'] ?: '',
-    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
-
     $reminders[] = [
         'type' => 'overdue_followup',
-        'detail' => $detailData,
+        'detail' => serializeAppDetail($row),
         'message' => "Overdue follow-up for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Scheduled: " . htmlspecialchars($row['follow_up_date'])
     ];
@@ -138,28 +133,9 @@ $todayInterviewsStmt = $pdo->prepare("
 ");
 $todayInterviewsStmt->execute([$todayStr]);
 foreach ($todayInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $detailData = json_encode([
-        'id' => (int)$row['id'],
-        'company' => $row['company'],
-        'job_title' => $row['job_title'],
-        'location' => $row['location'] ?: '',
-        'job_type' => $row['job_type'] ?: '',
-        'salary_range' => $row['salary_range'] ?: '',
-        'date_found' => $row['date_found'] ?: '',
-        'date_applied' => $row['date_applied'] ?: '',
-        'interview_date' => $row['interview_date'] ?: '',
-        'follow_up_date' => $row['follow_up_date'] ?: '',
-        'platform' => $row['platform'] ?: '',
-        'status' => $row['status'],
-        'result' => $row['result'] ?: '',
-        'technical_skills' => $row['technical_skills'] ?: '',
-        'job_link' => $row['job_link'] ?: '',
-        'remark' => $row['remark'] ?: '',
-    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
-
     $reminders[] = [
         'type' => 'today_interview',
-        'detail' => $detailData,
+        'detail' => serializeAppDetail($row),
         'message' => "🔔 Interview scheduled today for <strong>" . htmlspecialchars($row['company']) . "</strong>!",
         'time' => "Today"
     ];
@@ -172,28 +148,9 @@ $todayFollowupsStmt = $pdo->prepare("
 ");
 $todayFollowupsStmt->execute([$todayStr]);
 foreach ($todayFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $detailData = json_encode([
-        'id' => (int)$row['id'],
-        'company' => $row['company'],
-        'job_title' => $row['job_title'],
-        'location' => $row['location'] ?: '',
-        'job_type' => $row['job_type'] ?: '',
-        'salary_range' => $row['salary_range'] ?: '',
-        'date_found' => $row['date_found'] ?: '',
-        'date_applied' => $row['date_applied'] ?: '',
-        'interview_date' => $row['interview_date'] ?: '',
-        'follow_up_date' => $row['follow_up_date'] ?: '',
-        'platform' => $row['platform'] ?: '',
-        'status' => $row['status'],
-        'result' => $row['result'] ?: '',
-        'technical_skills' => $row['technical_skills'] ?: '',
-        'job_link' => $row['job_link'] ?: '',
-        'remark' => $row['remark'] ?: '',
-    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
-
     $reminders[] = [
         'type' => 'today_followup',
-        'detail' => $detailData,
+        'detail' => serializeAppDetail($row),
         'message' => "📅 Follow-up scheduled today for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Today"
     ];
@@ -206,28 +163,9 @@ $tomorrowInterviewsStmt = $pdo->prepare("
 ");
 $tomorrowInterviewsStmt->execute([$tomorrowStr]);
 foreach ($tomorrowInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $detailData = json_encode([
-        'id' => (int)$row['id'],
-        'company' => $row['company'],
-        'job_title' => $row['job_title'],
-        'location' => $row['location'] ?: '',
-        'job_type' => $row['job_type'] ?: '',
-        'salary_range' => $row['salary_range'] ?: '',
-        'date_found' => $row['date_found'] ?: '',
-        'date_applied' => $row['date_applied'] ?: '',
-        'interview_date' => $row['interview_date'] ?: '',
-        'follow_up_date' => $row['follow_up_date'] ?: '',
-        'platform' => $row['platform'] ?: '',
-        'status' => $row['status'],
-        'result' => $row['result'] ?: '',
-        'technical_skills' => $row['technical_skills'] ?: '',
-        'job_link' => $row['job_link'] ?: '',
-        'remark' => $row['remark'] ?: '',
-    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
-
     $reminders[] = [
         'type' => 'tomorrow_interview',
-        'detail' => $detailData,
+        'detail' => serializeAppDetail($row),
         'message' => "Upcoming interview tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Tomorrow"
     ];
@@ -240,29 +178,56 @@ $tomorrowFollowupsStmt = $pdo->prepare("
 ");
 $tomorrowFollowupsStmt->execute([$tomorrowStr]);
 foreach ($tomorrowFollowupsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $detailData = json_encode([
-        'id' => (int)$row['id'],
-        'company' => $row['company'],
-        'job_title' => $row['job_title'],
-        'location' => $row['location'] ?: '',
-        'job_type' => $row['job_type'] ?: '',
-        'salary_range' => $row['salary_range'] ?: '',
-        'date_found' => $row['date_found'] ?: '',
-        'date_applied' => $row['date_applied'] ?: '',
-        'interview_date' => $row['interview_date'] ?: '',
-        'follow_up_date' => $row['follow_up_date'] ?: '',
-        'platform' => $row['platform'] ?: '',
-        'status' => $row['status'],
-        'result' => $row['result'] ?: '',
-        'technical_skills' => $row['technical_skills'] ?: '',
-        'job_link' => $row['job_link'] ?: '',
-        'remark' => $row['remark'] ?: '',
-    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
-
     $reminders[] = [
         'type' => 'tomorrow_followup',
-        'detail' => $detailData,
+        'detail' => serializeAppDetail($row),
         'message' => "Upcoming follow-up tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Tomorrow"
+    ];
+}
+
+// 7. Overdue Assessments (Status Pending, Deadline past)
+$overdueAssessmentsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE assessment_status = 'Pending' AND assessment_deadline < ? 
+    ORDER BY assessment_deadline DESC
+");
+$overdueAssessmentsStmt->execute([$todayStr]);
+foreach ($overdueAssessmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $reminders[] = [
+        'type' => 'overdue_assessment',
+        'detail' => serializeAppDetail($row),
+        'message' => "Overdue assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
+        'time' => "Deadline: " . htmlspecialchars($row['assessment_deadline'])
+    ];
+}
+
+// 8. Today's Assessments
+$todayAssessmentsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE assessment_status = 'Pending' AND assessment_deadline = ?
+");
+$todayAssessmentsStmt->execute([$todayStr]);
+foreach ($todayAssessmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $reminders[] = [
+        'type' => 'today_assessment',
+        'detail' => serializeAppDetail($row),
+        'message' => "📝 Assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) due today for <strong>" . htmlspecialchars($row['company']) . "</strong>!",
+        'time' => "Today"
+    ];
+}
+
+// 9. Tomorrow's Assessments
+$tomorrowAssessmentsStmt = $pdo->prepare("
+    SELECT * FROM applications 
+    WHERE assessment_status = 'Pending' AND assessment_deadline = ?
+");
+$tomorrowAssessmentsStmt->execute([$tomorrowStr]);
+foreach ($tomorrowAssessmentsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $reminders[] = [
+        'type' => 'tomorrow_assessment',
+        'detail' => serializeAppDetail($row),
+        'message' => "Upcoming assessment (<strong>" . htmlspecialchars($row['assessment_type']) . "</strong>) tomorrow for <strong>" . htmlspecialchars($row['company']) . "</strong>.",
         'time' => "Tomorrow"
     ];
 }
@@ -357,6 +322,12 @@ foreach ($jobTypeData as $item) {
                         Add Job
                     </a>
                 </li>
+                <li class="sidebar-menu-item">
+                    <a href="settings.php">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        Settings
+                    </a>
+                </li>
             </ul>
         </aside>
 
@@ -385,6 +356,12 @@ foreach ($jobTypeData as $item) {
                     <a href="add.php">
                         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         Add
+                    </a>
+                </li>
+                <li class="mobile-nav-item">
+                    <a href="settings.php">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        Settings
                     </a>
                 </li>
             </ul>
@@ -495,14 +472,8 @@ foreach ($jobTypeData as $item) {
                 </a>
                 <a href="index.php?view=applications&status=Expired_Rejected" class="card-link">
                     <div class="card red">
-                        <h3>Expired & Rejected</h3>
+                        <h3>Expired, Rejected &amp; No Progress</h3>
                         <p><?= (int)$expired_rejected ?></p>
-                    </div>
-                </a>
-                <a href="index.php?view=applications&status=Unlikely+to+Progress" class="card-link">
-                    <div class="card pink">
-                        <h3>Unlikely to Progress</h3>
-                        <p><?= (int)$unlikely ?></p>
                     </div>
                 </a>
             </div>
@@ -620,8 +591,7 @@ foreach ($jobTypeData as $item) {
                                 <option value="Rejected" <?= $filterStatus === 'Rejected' ? 'selected' : '' ?>>Rejected</option>
                                 <option value="Offered" <?= $filterStatus === 'Offered' ? 'selected' : '' ?>>Offered</option>
                                 <option value="Expired" <?= $filterStatus === 'Expired' ? 'selected' : '' ?>>Expired</option>
-                                <option value="Expired_Rejected" <?= $filterStatus === 'Expired_Rejected' ? 'selected' : '' ?>>Expired & Rejected</option>
-                                <option value="Unlikely to Progress" <?= $filterStatus === 'Unlikely to Progress' ? 'selected' : '' ?>>Unlikely to Progress</option>
+                                <option value="Unlikely to Progress Further" <?= $filterStatus === 'Unlikely to Progress Further' ? 'selected' : '' ?>>Unlikely to Progress Further</option>
                             </select>
 
                             <!-- Export to Excel Button -->
@@ -1073,7 +1043,7 @@ foreach ($jobTypeData as $item) {
                     const matchesSearch = query === '' || textContent.includes(query);
                     const matchesStatus = selectedStatus === '' || 
                         (selectedStatus === 'Expired_Rejected' 
-                            ? (rowStatus === 'Expired' || rowStatus === 'Rejected') 
+                            ? (rowStatus === 'Expired' || rowStatus === 'Rejected' || rowStatus === 'Unlikely to Progress Further') 
                             : rowStatus === selectedStatus);
 
                     if (matchesSearch && matchesStatus) {
@@ -1120,7 +1090,22 @@ foreach ($jobTypeData as $item) {
             filterTable();
 
             tableSearch.addEventListener('input', filterTable);
-            statusFilter.addEventListener('change', filterTable);
+
+            // Status dropdown triggers a full page reload so PHP always
+            // renders the correct unfiltered dataset before JS applies search.
+            statusFilter.addEventListener('change', function () {
+                const params = new URLSearchParams(window.location.search);
+                const selected = statusFilter.value;
+                if (selected !== '') {
+                    params.set('status', selected);
+                } else {
+                    params.delete('status');
+                }
+                // Preserve view and other params, strip stale search
+                params.delete('search');
+                params.set('view', 'applications');
+                window.location.href = window.location.pathname + '?' + params.toString();
+            });
         <?php endif; ?>
 
         // ================= DETAILED MODAL CONTROLLER =================

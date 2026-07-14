@@ -466,7 +466,8 @@ tr.status-expired {
     background: rgba(100, 116, 139, 0.02);
 }
 
-tr.status-unlikely-to-progress {
+tr.status-unlikely-to-progress,
+tr.status-unlikely-to-progress-further {
     background: rgba(219, 39, 119, 0.02);
 }
 
@@ -506,7 +507,8 @@ tr.status-expired:hover {
     background: rgba(100, 116, 139, 0.07);
 }
 
-tr.status-unlikely-to-progress:hover {
+tr.status-unlikely-to-progress:hover,
+tr.status-unlikely-to-progress-further:hover {
     background: rgba(219, 39, 119, 0.07);
 }
 
@@ -576,7 +578,8 @@ tr.status-unlikely-to-progress:hover {
     border: 1px solid rgba(71, 85, 105, 0.12);
 }
 
-.badge.unlikely-to-progress {
+.badge.unlikely-to-progress,
+.badge.unlikely-to-progress-further {
     background: #fdf2f8;
     color: #db2777;
     border: 1px solid rgba(219, 39, 119, 0.12);
@@ -1582,5 +1585,107 @@ textarea {
 @media (max-width: 480px) {
     .btn.export-btn span.export-label {
         display: none;
+    }
+}
+
+/* ===== Assessment Tracker & Settings Page Enhancements ===== */
+.card-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 30px;
+    box-shadow: var(--shadow-md);
+    transition: var(--transition-smooth);
+}
+
+.card-box h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.cron-instructions {
+    margin-top: 10px;
+}
+
+.field-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+/* Assessment Suggestions & Prep Tips Box */
+.assessment-suggestions-container {
+    grid-column: span 2;
+    margin-top: 15px;
+    display: none;
+    transition: var(--transition-smooth);
+}
+
+.assessment-suggestions-container.active {
+    display: block;
+}
+
+.suggestions-card {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.05) 0%, rgba(192, 132, 252, 0.05) 100%);
+    border: 1px solid rgba(192, 132, 252, 0.25);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+}
+
+.suggestions-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--accent-gradient);
+}
+
+.suggestions-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.suggestions-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.suggestions-body {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.suggestions-body ul {
+    padding-left: 20px;
+    margin-top: 8px;
+}
+
+.suggestions-body li {
+    margin-bottom: 6px;
+}
+
+.suggestions-body li strong {
+    color: var(--text-primary);
+}
+
+/* Mobile responsive full width suggestions */
+@media (max-width: 768px) {
+    .assessment-suggestions-container {
+        grid-column: span 1;
     }
 }

@@ -33,7 +33,12 @@ CREATE TABLE IF NOT EXISTS applications (
         "follow_up_date TEXT",
         "interview_date TEXT",
         "result TEXT",
-        "technical_skills TEXT"
+        "technical_skills TEXT",
+        "assessment_status TEXT DEFAULT 'None'",
+        "assessment_type TEXT",
+        "assessment_deadline TEXT",
+        "assessment_link TEXT",
+        "assessment_notes TEXT"
     ];
 
     foreach ($columns as $column) {
@@ -43,6 +48,13 @@ CREATE TABLE IF NOT EXISTS applications (
             // Column already exists
         }
     }
+
+    $pdo->exec("
+CREATE TABLE IF NOT EXISTS settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT
+)
+");
 } catch (PDOException $e) {
     die("Database connection failed: " . $e->getMessage());
 }

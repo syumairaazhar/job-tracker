@@ -1,6 +1,8 @@
 <?php
 session_start();
 include 'db.php';
+define('PDO_SUPPORT', true);
+include 'telegram_notify.php';
 
 // Generate CSRF token if it doesn't exist
 if (empty($_SESSION['csrf_token'])) {
@@ -34,14 +36,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $result = trim($_POST['result'] ?? '');
     $technical_skills = trim($_POST['technical_skills'] ?? '');
 
+    // Assessment fields
+    $assessment_status = trim($_POST['assessment_status'] ?? 'None');
+    $assessment_type = trim($_POST['assessment_type'] ?? '');
+    $assessment_deadline = trim($_POST['assessment_deadline'] ?? '');
+    $assessment_link = trim($_POST['assessment_link'] ?? '');
+    $assessment_notes = trim($_POST['assessment_notes'] ?? '');
+
     // Server-side validation
     if (empty($company) || empty($job_title)) {
         $error = 'Company name and job title are required.';
     } else {
         $stmt = $pdo->prepare("
             INSERT INTO applications 
-            (company, job_title, date_found, date_applied, status, platform, job_type, location, salary_range, job_link, remark, follow_up_date, interview_date, result, technical_skills)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (company, job_title, date_found, date_applied, status, platform, job_type, location, salary_range, job_link, remark, follow_up_date, interview_date, result, technical_skills, assessment_status, assessment_type, assessment_deadline, assessment_link, assessment_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
@@ -59,8 +68,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $follow_up_date ?: null,
             $interview_date ?: null,
             $result ?: null,
-            $technical_skills ?: null
+            $technical_skills ?: null,
+            $assessment_status,
+            $assessment_type ?: null,
+            $assessment_deadline ?: null,
+            $assessment_link ?: null,
+            $assessment_notes ?: null
         ]);
+
+        $appId = $pdo->lastInsertId();
+        $newAppData = [
+            'id' => $appId,
+            'company' => $company,
+            'job_title' => $job_title,
+            'status' => $status,
+            'interview_date' => $interview_date,
+            'follow_up_date' => $follow_up_date,
+            'assessment_status' => $assessment_status,
+            'assessment_type' => $assessment_type,
+            'assessment_deadline' => $assessment_deadline,
+            'assessment_link' => $assessment_link,
+            'assessment_notes' => $assessment_notes
+        ];
+        notifyApplicationChange($pdo, $newAppData, 'create');
 
         $_SESSION['notification'] = [
             'type' => 'success',
@@ -119,6 +149,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         Add Job
                     </a>
                 </li>
+                <li class="sidebar-menu-item">
+                    <a href="settings.php">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        Settings
+                    </a>
+                </li>
             </ul>
         </aside>
 
@@ -147,6 +183,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <a href="add.php">
                         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         Add
+                    </a>
+                </li>
+                <li class="mobile-nav-item">
+                    <a href="settings.php">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        Settings
                     </a>
                 </li>
             </ul>
@@ -201,7 +243,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 <option>Rejected</option>
                                 <option>Offered</option>
                                 <option>Expired</option>
-                                <option>Unlikely to Progress</option>
+                                <option>Unlikely to Progress Further</option>
                             </select>
                         </div>
 
@@ -267,6 +309,57 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <input type="text" name="technical_skills" placeholder="e.g. React, PHP, SQL, Figma">
                         </div>
 
+                        <!-- Assessment Tracker Section -->
+                        <div class="form-group">
+                            <label>Assessment Status</label>
+                            <select name="assessment_status" id="assessment_status" onchange="toggleAssessmentFields()">
+                                <option value="None" selected>None</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                        </div>
+
+                        <div id="assessment_extra_fields" style="display: none;">
+                            <div class="form-group">
+                                <label>Assessment Type</label>
+                                <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
+                                    <option value="" disabled selected>Select assessment type</option>
+                                    <option value="Behavioral Assessment">Behavioral Assessment</option>
+                                    <option value="Technical / Coding Test">Technical / Coding Test</option>
+                                    <option value="Cognitive / Aptitude Test">Cognitive / Aptitude Test</option>
+                                    <option value="Take-home Assignment">Take-home Assignment</option>
+                                    <option value="English / Communication Test">English / Communication Test</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Assessment Deadline</label>
+                                <input type="date" name="assessment_deadline" id="assessment_deadline">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Assessment Link</label>
+                                <input type="url" name="assessment_link" id="assessment_link" placeholder="https://...">
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>Assessment Notes / Reminders</label>
+                                <textarea name="assessment_notes" id="assessment_notes" placeholder="e.g. Needs to be completed in one sitting, study company values..."></textarea>
+                            </div>
+
+                            <!-- Preparation Suggestions Box -->
+                            <div class="assessment-suggestions-container" id="assessment_suggestions_box">
+                                <div class="suggestions-card">
+                                    <div class="suggestions-header">
+                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions & Tips</h3>
+                                    </div>
+                                    <div class="suggestions-body" id="assessment_suggestions_body">
+                                        <!-- Tips injected dynamically via JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="form-group full-width">
                             <label>Remark</label>
                             <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."></textarea>
@@ -294,6 +387,102 @@ function togglePlatformOther(select) {
         otherInput.required = false;
         otherInput.value = '';
     }
+}
+
+// Toggle assessment fields visibility based on status
+function toggleAssessmentFields() {
+    const status = document.getElementById('assessment_status').value;
+    const extraFields = document.getElementById('assessment_extra_fields');
+    const typeSelect = document.getElementById('assessment_type');
+    
+    if (status !== 'None') {
+        extraFields.style.display = 'contents'; // Fits inside CSS Grid
+        toggleAssessmentSuggestions();
+    } else {
+        extraFields.style.display = 'none';
+        document.getElementById('assessment_suggestions_box').classList.remove('active');
+    }
+}
+
+// Show dynamic tips based on type
+function toggleAssessmentSuggestions() {
+    const type = document.getElementById('assessment_type').value;
+    const container = document.getElementById('assessment_suggestions_box');
+    const tipsBody = document.getElementById('assessment_suggestions_body');
+    const tipsTitle = document.getElementById('assessment_suggestions_title');
+    
+    if (!type || document.getElementById('assessment_status').value === 'None') {
+        container.classList.remove('active');
+        return;
+    }
+    
+    let titleText = '';
+    let tipsHTML = '';
+    
+    switch (type) {
+        case 'Behavioral Assessment':
+            titleText = '💡 Behavioral Assessment Preparation Tips';
+            tipsHTML = `
+                <ul>
+                    <li><strong>The STAR Method:</strong> Always frame your answers with: <b>S</b>ituation, <b>T</b>ask, <b>A</b>ction, <b>R</b>esult. Be specific about your actions and quantify results.</li>
+                    <li><strong>Company Core Values:</strong> Research the company's culture. Align your answers with their specific core values (e.g. customer obsession, collaboration).</li>
+                    <li><strong>Consistency check:</strong> These tests often ask the same question in multiple formats. Answer honestly and consistently—don't try to guess what the system wants.</li>
+                    <li><strong>Time Management:</strong> Don't overthink personality test questions. Trust your first instinct; they are usually timed.</li>
+                </ul>
+            `;
+            break;
+        case 'Technical / Coding Test':
+            titleText = '💻 Technical & Coding Test Strategy';
+            tipsHTML = `
+                <ul>
+                    <li><strong>Think Out Loud:</strong> Talk through your reasoning, trade-offs, and design choices. Solvers who explain their thought process score higher even with bugs.</li>
+                    <li><strong>Brute Force First:</strong> Write a working naive solution first, then optimize. It secures partial points and ensures you have something functional.</li>
+                    <li><strong>Edge Cases:</strong> Test for empty arrays, null values, negative inputs, large numbers, and boundary limits.</li>
+                    <li><strong>Core DSA:</strong> Review Arrays, HashMaps, Trees, Graphs, Sorting algorithms, and Space/Time Complexity.</li>
+                </ul>
+            `;
+            break;
+        case 'Cognitive / Aptitude Test':
+            titleText = '🧠 Cognitive & Aptitude Test Hacks';
+            tipsHTML = `
+                <ul>
+                    <li><strong>Manage Time Strictly:</strong> These tests are designed to be speed-runs. If a logic puzzle takes more than 45 seconds, guess and move on.</li>
+                    <li><strong>Do Not Get Stuck:</strong> Harder questions are placed to consume your time. Skip them and return if the interface allows.</li>
+                    <li><strong>Warm-up:</strong> Play simple brain puzzles or practice similar numerical reasoning tests for 15 minutes before opening the real exam.</li>
+                    <li><strong>Elimination Method:</strong> Eliminate clearly wrong options to improve your guessing odds.</li>
+                </ul>
+            `;
+            break;
+        case 'Take-home Assignment':
+            titleText = '🏠 Take-home Project Best Practices';
+            tipsHTML = `
+                <ul>
+                    <li><strong>README is Key:</strong> Write a detailed README showing: how to run, how to build, tests, and architectural design choices.</li>
+                    <li><strong>Clean Code:</strong> Treat it like production code. Use clear variable names, separate logic, follow folder structures, and handle errors.</li>
+                    <li><strong>Write Tests:</strong> Add a couple of simple unit/integration tests to show that you value quality assurance.</li>
+                    <li><strong>Git History:</strong> Commit in clean logical units. Companies evaluate your commit history to see how you work.</li>
+                </ul>
+            `;
+            break;
+        case 'English / Communication Test':
+            titleText = '🗣️ Communication & Language Tips';
+            tipsHTML = `
+                <ul>
+                    <li><strong>Speak Clearly:</strong> In verbal recording tests, speak slowly, articulate your words, and ensure your microphone level is perfect.</li>
+                    <li><strong>Structure Answers:</strong> Introduce the topic, explain the main points, and give a quick summary. Avoid unstructured rambling.</li>
+                    <li><strong>Quiet Environment:</strong> Use headphones with a noise-canceling mic. Background noise can fail automated scoring bots.</li>
+                    <li><strong>Grammar & Spelling:</strong> In writing tasks, review your spelling. Avoid using slang or excessive abbreviations.</li>
+                </ul>
+            `;
+            break;
+        default:
+            container.classList.remove('active');
+            return;
+    }
+    
+    tipsTitle.textContent = titleText;
+    tipsBody.innerHTML = tipsHTML;
+    container.classList.add('active');
 }
 </script>
 </html>
