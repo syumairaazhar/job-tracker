@@ -113,7 +113,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Job Tracker</title>
-    <link rel="stylesheet" href="style.css?v=1.0.4">
+    <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
 
@@ -216,40 +216,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
 
                     <div class="form-grid">
+
+                        <!-- ── Section 1: Job Details ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">1</span>
+                            <div>
+                                <div class="form-section-title">Job Details</div>
+                                <div class="form-section-subtitle">Basic information about the position</div>
+                            </div>
+                        </div>
+
                         <div class="form-group">
-                            <label>Company Name *</label>
+                            <label>Company Name <span class="required-star">*</span></label>
                             <input type="text" name="company" required placeholder="e.g. Google, Stripe, Canva">
                         </div>
 
                         <div class="form-group">
-                            <label>Job Title *</label>
+                            <label>Job Title <span class="required-star">*</span></label>
                             <input type="text" name="job_title" required placeholder="e.g. Senior Software Engineer">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Date Found Job</label>
-                            <input type="date" name="date_found" value="<?= date('Y-m-d') ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Date Applied</label>
-                            <input type="date" name="date_applied">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Application Status</label>
-                            <select name="status">
-                                <option>Saved</option>
-                                <option>Pending</option>
-                                <option selected>Applied</option>
-                                <option>Responded</option>
-                                <option>Interview</option>
-                                <option>Assessment</option>
-                                <option>Rejected</option>
-                                <option>Offered</option>
-                                <option>Expired</option>
-                                <option>Unlikely to Progress Further</option>
-                            </select>
                         </div>
 
                         <div class="form-group">
@@ -286,12 +270,52 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <div class="form-group">
                             <label>Salary Range</label>
-                            <input type="text" name="salary_range" placeholder="e.g. RM 5,000 - RM 7,000">
+                            <input type="text" name="salary_range" placeholder="e.g. RM 5,000 – RM 7,000">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label>Job Link</label>
+                            <input type="url" name="job_link" placeholder="https://...">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label>Technical / Skills Required</label>
+                            <input type="text" name="technical_skills" placeholder="e.g. React, PHP, SQL, Figma">
+                        </div>
+
+                        <!-- ── Section 2: Status & Tracking ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">2</span>
+                            <div>
+                                <div class="form-section-title">Status &amp; Tracking</div>
+                                <div class="form-section-subtitle">Track your application progress and dates</div>
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label>Job Link</label>
-                            <input type="url" name="job_link" placeholder="https://...">
+                            <label>Application Status</label>
+                            <select name="status">
+                                <option>Saved</option>
+                                <option>Pending</option>
+                                <option selected>Applied</option>
+                                <option>Responded</option>
+                                <option>Interview</option>
+                                <option>Assessment</option>
+                                <option>Rejected</option>
+                                <option>Offered</option>
+                                <option>Expired</option>
+                                <option>Unlikely to Progress Further</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Found Job</label>
+                            <input type="date" name="date_found" value="<?= date('Y-m-d') ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Applied</label>
+                            <input type="date" name="date_applied">
                         </div>
 
                         <div class="form-group">
@@ -309,12 +333,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <input type="text" name="result" placeholder="e.g. Passed, Pending, Shortlisted">
                         </div>
 
-                        <div class="form-group">
-                            <label>Technical / Skills Required</label>
-                            <input type="text" name="technical_skills" placeholder="e.g. React, PHP, SQL, Figma">
+                        <div class="form-group full-width">
+                            <label>Remark</label>
+                            <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."></textarea>
                         </div>
 
-                        <!-- Assessment Tracker Section -->
+                        <!-- ── Section 3: Assessment Details ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">3</span>
+                            <div>
+                                <div class="form-section-title">Assessment</div>
+                                <div class="form-section-subtitle">Track any online tests or assessments</div>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <label>Assessment Status</label>
                             <select name="assessment_status" id="assessment_status" onchange="toggleAssessmentFields()">
@@ -356,7 +388,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <div class="assessment-suggestions-container" id="assessment_suggestions_box">
                                 <div class="suggestions-card">
                                     <div class="suggestions-header">
-                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions & Tips</h3>
+                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions &amp; Tips</h3>
                                     </div>
                                     <div class="suggestions-body" id="assessment_suggestions_body">
                                         <!-- Tips injected dynamically via JavaScript -->
@@ -365,14 +397,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                         </div>
 
-                        <div class="form-group full-width">
-                            <label>Remark</label>
-                            <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."></textarea>
-                        </div>
                     </div>
 
                     <div class="form-actions">
-                        <button type="submit" class="btn">Save Application</button>
+                        <button type="submit" class="btn">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Save Application
+                        </button>
                         <a href="index.php" class="back">Cancel</a>
                     </div>
                 </form>

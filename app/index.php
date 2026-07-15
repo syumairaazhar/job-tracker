@@ -6,6 +6,18 @@ function getStatusClass($status) {
     return preg_replace('/\s+/', '-', strtolower(trim($status)));
 }
 
+function getAvatarColor($name) {
+    $hash = md5($name);
+    $h = hexdec(substr($hash, 0, 4)) % 360;
+    return "hsl({$h}, 70%, 93%)";
+}
+
+function getAvatarTextColor($name) {
+    $hash = md5($name);
+    $h = hexdec(substr($hash, 0, 4)) % 360;
+    return "hsl({$h}, 75%, 35%)";
+}
+
 // Generate CSRF token if it doesn't exist to secure edit/delete
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -25,6 +37,12 @@ $offered = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Offered'
 $expired_rejected = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Expired' OR status='Rejected' OR status='Unlikely to Progress Further'")->fetchColumn();
 $pending = $pdo->query("SELECT COUNT(*) FROM applications WHERE status='Pending'")->fetchColumn();
 $pending_assessments = $pdo->query("SELECT COUNT(*) FROM applications WHERE assessment_status='Pending'")->fetchColumn();
+
+// Fetch applications from the last 7 days for the motivational progress tracker
+$sevenDaysAgo = date('Y-m-d', strtotime('-7 days'));
+$stmtWeekly = $pdo->prepare("SELECT COUNT(*) FROM applications WHERE date_applied >= ?");
+$stmtWeekly->execute([$sevenDaysAgo]);
+$weeklyApplied = (int)$stmtWeekly->fetchColumn();
 
 // Fetch all applications
 $stmt = $pdo->query("SELECT * FROM applications ORDER BY date_applied DESC, created_at DESC");
@@ -311,7 +329,7 @@ foreach ($jobTypeData as $item) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Job Tracker</title>
-    <link rel="stylesheet" href="style.css?v=1.0.4">
+    <link rel="stylesheet" href="style.css?v=1.2.0">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -522,6 +540,51 @@ foreach ($jobTypeData as $item) {
 
             <!-- ================= VIEW 1: DASHBOARD ================= -->
             <?php if ($view === 'dashboard'): ?>
+                <!-- Motivational Spotlight Hero Banner -->
+                <?php
+                    $weeklyGoal = 5;
+                    $progressPct = min(100, round(($weeklyApplied / $weeklyGoal) * 100));
+                    $quotes = [
+                        "Each application is a seed sown for your future. Keep pushing!",
+                        "The only way to fail is to stop trying. Your dream job is waiting!",
+                        "Action breeds confidence and courage. Submit one more today!",
+                        "Believe you can and you're halfway there. Let's make it happen!",
+                        "Consistency is the key. Small steps every day lead to big results!"
+                    ];
+                    // Select quote based on day of week or count
+                    $motivationalQuote = $quotes[($weeklyApplied + date('N')) % count($quotes)];
+                    
+                    if ($progressPct >= 100) {
+                        $greeting = "Goal Achieved! You're Unstoppable! 🏆";
+                        $advice = "Fantastic job! You met your weekly application target. Keep the momentum going!";
+                    } elseif ($progressPct >= 60) {
+                        $greeting = "You're Doing Amazing! ⚡";
+                        $advice = "Just a little more to hit your weekly target of $weeklyGoal. You got this!";
+                    } else {
+                        $greeting = "Ready to Land Your Dream Job? 🚀";
+                        $advice = "Apply to a few more positions to reach your weekly goal of $weeklyGoal!";
+                    }
+                ?>
+                <div class="motivation-banner">
+                    <div class="motivation-content">
+                        <div class="motivation-text-side">
+                            <h2><?= $greeting ?></h2>
+                            <p class="motivation-advice"><?= $advice ?></p>
+                            <p class="motivation-quote">"<?= $motivationalQuote ?>"</p>
+                        </div>
+                        <div class="motivation-progress-side">
+                            <div class="motivation-progress-meta">
+                                <span>Weekly Target Progress</span>
+                                <strong><?= $weeklyApplied ?> / <?= $weeklyGoal ?></strong>
+                            </div>
+                            <div class="motivation-progress-container">
+                                <div class="motivation-progress-bar" style="width: <?= $progressPct ?>%"></div>
+                            </div>
+                            <span class="motivation-pct"><?= $progressPct ?>% Complete</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="dashboard-grid">
                     
                     <!-- Full-width: Recent Applications Table -->
@@ -539,14 +602,14 @@ foreach ($jobTypeData as $item) {
                                     <p>Track your first job application to get started.</p>
                                 </div>
                             <?php else: ?>
-                                <table>
+                                <table class="responsive-table">
                                     <thead>
                                         <tr>
-                                            <th>Company</th>
-                                            <th>Job Title</th>
-                                            <th>Date Applied</th>
-                                            <th>Status</th>
-                                            <th>Action</th>
+                                            <th style="width: 35%;">Job / Company</th>
+                                            <th style="width: 25%;">Details</th>
+                                            <th style="width: 15%;">Date Applied</th>
+                                            <th style="width: 15%;">Status</th>
+                                            <th style="width: 10%;">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -555,19 +618,64 @@ foreach ($jobTypeData as $item) {
                                         foreach ($recentApps as $row):
                                             $detailData = serializeAppDetail($row);
                                         ?>
-                                            <tr class="status-<?= getStatusClass($row['status']) ?>" data-detail='<?= $detailData ?>'>
-                                                <td class="searchable"><a href="javascript:void(0)" class="detail-link"><?= htmlspecialchars($row['company']) ?></a></td>
-                                                <td class="searchable"><a href="javascript:void(0)" class="detail-link"><strong><?= htmlspecialchars($row['job_title']) ?></strong></a></td>
-                                                <td><?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: 'N/A') ?></td>
-                                                <td>
-                                                    <span class="badge <?= getStatusClass($row['status']) ?>">
-                                                        <?= htmlspecialchars($row['status']) ?>
-                                                    </span>
+                                            <tr class="app-row status-<?= getStatusClass($row['status']) ?>" data-status="<?= htmlspecialchars($row['status']) ?>" data-date="<?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: '') ?>" data-detail='<?= $detailData ?>'>
+                                                <td data-label="Job" class="searchable">
+                                                    <div class="company-info-cell">
+                                                        <div class="company-logo-avatar" style="background: <?= getAvatarColor($row['company']) ?>; color: <?= getAvatarTextColor($row['company']) ?>;">
+                                                            <?= htmlspecialchars(strtoupper(substr($row['company'], 0, 1))) ?>
+                                                        </div>
+                                                        <div class="company-text-info">
+                                                            <a href="javascript:void(0)" class="detail-link job-title-link"><strong><?= htmlspecialchars($row['job_title']) ?></strong></a>
+                                                            <span class="company-name"><?= htmlspecialchars($row['company']) ?></span>
+                                                        </div>
+                                                    </div>
                                                 </td>
-                                                <td>
-                                                    <div class="action-links">
-                                                        <a class="edit" href="edit.php?id=<?= (int)$row['id'] ?>">Edit</a>
-                                                        <a class="delete" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                                <td data-label="Details" class="searchable">
+                                                    <div class="job-meta-details">
+                                                        <?php if (!empty($row['location'])): ?>
+                                                            <span class="meta-tag location-tag" title="Location">
+                                                                <svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+                                                                <?= htmlspecialchars($row['location']) ?>
+                                                            </span>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($row['platform'])): ?>
+                                                            <span class="meta-tag platform-tag" title="Platform">
+                                                                <svg viewBox="0 0 24 24" width="12" height="12"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                                                                <?= htmlspecialchars($row['platform']) ?>
+                                                            </span>
+                                                        <?php endif; ?>
+                                                        <span class="meta-tag type-tag">
+                                                            <?= htmlspecialchars($row['job_type'] ?: 'Full-time') ?>
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td data-label="Date Applied">
+                                                    <div class="date-applied-cell">
+                                                        <svg viewBox="0 0 24 24" class="icon-calendar" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                        <span><?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: 'N/A') ?></span>
+                                                    </div>
+                                                </td>
+                                                <td data-label="Status">
+                                                    <div class="status-assessment-cell">
+                                                        <span class="badge <?= getStatusClass($row['status']) ?>">
+                                                            <?= htmlspecialchars($row['status']) ?>
+                                                        </span>
+                                                        <?php if (!empty($row['assessment_status']) && $row['assessment_status'] !== 'None'): ?>
+                                                            <span class="assessment-indicator <?= getStatusClass($row['assessment_status']) ?>" title="Assessment: <?= htmlspecialchars($row['assessment_status']) ?> (Deadline: <?= htmlspecialchars($row['assessment_deadline'] ?: 'No deadline') ?>)">
+                                                                <svg viewBox="0 0 24 24" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                                                <span><?= htmlspecialchars($row['assessment_status']) ?></span>
+                                                            </span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </td>
+                                                <td data-label="Actions">
+                                                    <div class="action-buttons-cell">
+                                                        <a class="action-btn edit-btn-icon" href="edit.php?id=<?= (int)$row['id'] ?>" title="Edit Application">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/></svg>
+                                                        </a>
+                                                        <a class="action-btn delete-btn-icon" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" title="Delete Application">
+                                                            <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                                        </a>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -603,7 +711,21 @@ foreach ($jobTypeData as $item) {
                         
                         <!-- Right: Filter By Status + Export -->
                         <div class="filter-wrapper">
-                            <select id="statusFilter">
+                            <select id="limitFilter" title="Show applications per page">
+                                <?php $filterLimit = $_GET['limit'] ?? '50'; ?>
+                                <option value="10" <?= $filterLimit === '10' ? 'selected' : '' ?>>Show 10</option>
+                                <option value="20" <?= $filterLimit === '20' ? 'selected' : '' ?>>Show 20</option>
+                                <option value="50" <?= $filterLimit === '50' ? 'selected' : '' ?>>Show 50</option>
+                                <option value="all" <?= $filterLimit === 'all' ? 'selected' : '' ?>>Show All</option>
+                            </select>
+
+                            <select id="sortOrder" title="Sort by date applied">
+                                <?php $filterSort = $_GET['sort'] ?? 'latest'; ?>
+                                <option value="latest" <?= $filterSort === 'latest' ? 'selected' : '' ?>>Latest First</option>
+                                <option value="earliest" <?= $filterSort === 'earliest' ? 'selected' : '' ?>>Earliest First</option>
+                            </select>
+
+                            <select id="statusFilter" >
                                 <?php $filterStatus = $_GET['status'] ?? ''; ?>
                                 <option value="" <?= $filterStatus === '' ? 'selected' : '' ?>>All Statuses</option>
                                 <option value="Saved" <?= $filterStatus === 'Saved' ? 'selected' : '' ?>>Saved</option>
@@ -646,33 +768,78 @@ foreach ($jobTypeData as $item) {
                                 <p>Click the "+ Add Application" button to insert a record.</p>
                             </div>
                         <?php else: ?>
-                            <table id="applicationsTable">
+                            <table id="applicationsTable" class="responsive-table">
                                 <thead>
                                     <tr>
-                                        <th>Company</th>
-                                        <th>Job Title</th>
-                                        <th>Date Applied</th>
-                                        <th>Status</th>
-                                        <th>Action</th>
+                                        <th style="width: 35%;">Job / Company</th>
+                                        <th style="width: 25%;">Details</th>
+                                        <th style="width: 15%;">Date Applied</th>
+                                        <th style="width: 15%;">Status</th>
+                                        <th style="width: 10%;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($applications as $row):
                                         $detailData = serializeAppDetail($row);
                                     ?>
-                                        <tr class="app-row status-<?= getStatusClass($row['status']) ?>" data-status="<?= htmlspecialchars($row['status']) ?>" data-detail='<?= $detailData ?>'>
-                                            <td class="searchable"><a href="javascript:void(0)" class="detail-link"><?= htmlspecialchars($row['company']) ?></a></td>
-                                            <td class="searchable"><a href="javascript:void(0)" class="detail-link"><strong><?= htmlspecialchars($row['job_title']) ?></strong></a></td>
-                                            <td><?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: 'N/A') ?></td>
-                                            <td>
-                                                <span class="badge <?= getStatusClass($row['status']) ?>">
-                                                    <?= htmlspecialchars($row['status']) ?>
-                                                </span>
+                                        <tr class="app-row status-<?= getStatusClass($row['status']) ?>" data-status="<?= htmlspecialchars($row['status']) ?>" data-date="<?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: '') ?>" data-detail='<?= $detailData ?>'>
+                                            <td data-label="Job" class="searchable">
+                                                <div class="company-info-cell">
+                                                    <div class="company-logo-avatar" style="background: <?= getAvatarColor($row['company']) ?>; color: <?= getAvatarTextColor($row['company']) ?>;">
+                                                        <?= htmlspecialchars(strtoupper(substr($row['company'], 0, 1))) ?>
+                                                    </div>
+                                                    <div class="company-text-info">
+                                                        <a href="javascript:void(0)" class="detail-link job-title-link"><strong><?= htmlspecialchars($row['job_title']) ?></strong></a>
+                                                        <span class="company-name"><?= htmlspecialchars($row['company']) ?></span>
+                                                    </div>
+                                                </div>
                                             </td>
-                                            <td>
-                                                <div class="action-links">
-                                                    <a class="edit" href="edit.php?id=<?= (int)$row['id'] ?>">Edit</a>
-                                                    <a class="delete" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>">Delete</a>
+                                            <td data-label="Details" class="searchable">
+                                                <div class="job-meta-details">
+                                                    <?php if (!empty($row['location'])): ?>
+                                                        <span class="meta-tag location-tag" title="Location">
+                                                            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+                                                            <?= htmlspecialchars($row['location']) ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($row['platform'])): ?>
+                                                        <span class="meta-tag platform-tag" title="Platform">
+                                                            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                                                            <?= htmlspecialchars($row['platform']) ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <span class="meta-tag type-tag">
+                                                        <?= htmlspecialchars($row['job_type'] ?: 'Full-time') ?>
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td data-label="Date Applied">
+                                                <div class="date-applied-cell">
+                                                    <svg viewBox="0 0 24 24" class="icon-calendar" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                    <span><?= htmlspecialchars($row['date_applied'] ?: $row['date_found'] ?: 'N/A') ?></span>
+                                                </div>
+                                            </td>
+                                            <td data-label="Status">
+                                                <div class="status-assessment-cell">
+                                                    <span class="badge <?= getStatusClass($row['status']) ?>">
+                                                        <?= htmlspecialchars($row['status']) ?>
+                                                    </span>
+                                                    <?php if (!empty($row['assessment_status']) && $row['assessment_status'] !== 'None'): ?>
+                                                        <span class="assessment-indicator <?= getStatusClass($row['assessment_status']) ?>" title="Assessment: <?= htmlspecialchars($row['assessment_status']) ?> (Deadline: <?= htmlspecialchars($row['assessment_deadline'] ?: 'No deadline') ?>)">
+                                                            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                                            <span><?= htmlspecialchars($row['assessment_status']) ?></span>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                            <td data-label="Actions">
+                                                <div class="action-buttons-cell">
+                                                    <a class="action-btn edit-btn-icon" href="edit.php?id=<?= (int)$row['id'] ?>" title="Edit Application">
+                                                        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/></svg>
+                                                    </a>
+                                                    <a class="action-btn delete-btn-icon" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" title="Delete Application">
+                                                        <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                                    </a>
                                                 </div>
                                             </td>
                                         </tr>
@@ -683,6 +850,27 @@ foreach ($jobTypeData as $item) {
                                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
                                 <h3>No matching applications found</h3>
                                 <p>Try adjusting your search terms or filters.</p>
+                            </div>
+
+                            <div id="paginationControls" class="pagination-controls" style="display: none;">
+                                <div class="pagination-info">
+                                    Showing <span id="paginationStart">0</span>-<span id="paginationEnd">0</span> of <span id="paginationTotal">0</span> entries
+                                </div>
+                                <div class="pagination-buttons">
+                                    <button id="prevPageBtn" class="btn secondary pagination-btn" title="Previous Page">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="15 18 9 12 15 6"></polyline>
+                                        </svg>
+                                        Prev
+                                    </button>
+                                    <span id="pageIndicator" class="page-indicator">Page 1 of 1</span>
+                                    <button id="nextPageBtn" class="btn secondary pagination-btn" title="Next Page">
+                                        Next
+                                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="9 18 15 12 9 6"></polyline>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -874,20 +1062,20 @@ foreach ($jobTypeData as $item) {
 
     <!-- ChartJS and Interactive Filters Script -->
     <script>
-        // Shared colors matching CSS properties (Pastel Theme)
+        // Shared colors matching CSS variables (Clean Light Mode)
         const chartColors = {
             saved: '#64748b',
-            pending: '#e67e22',
-            applied: '#3b82f6',
-            responded: '#a855f7',
-            interview: '#f59e0b',
-            assessment: '#06b6d4',
-            rejected: '#f43f5e',
-            offered: '#10b981',
+            pending: '#ea580c',
+            applied: '#2563eb',
+            responded: '#7c3aed',
+            interview: '#db2777',
+            assessment: '#0891b2',
+            rejected: '#dc2626',
+            offered: '#16a34a',
             expired: '#94a3b8',
-            unlikely: '#db2777',
-            text: '#7b6f8c',
-            grid: 'rgba(100, 70, 120, 0.06)'
+            unlikely: '#be185d',
+            text: '#475569',
+            grid: '#e2e8f0'
         };
 
         const mapColors = (labels) => {
@@ -1067,18 +1255,31 @@ foreach ($jobTypeData as $item) {
             });
         <?php endif; ?>
 
-        // Applications list filtering logic (Client-Side Search & Filter with URL syncing)
+        // Applications list filtering logic (Client-Side Search & Filter with URL syncing & Pagination)
         <?php if ($view === 'applications' && !empty($applications)): ?>
             const tableSearch = document.getElementById('tableSearch');
             const statusFilter = document.getElementById('statusFilter');
+            const limitFilter = document.getElementById('limitFilter');
+            const sortOrder = document.getElementById('sortOrder');
             const tableRows = document.querySelectorAll('.app-row');
             const noResults = document.getElementById('noResults');
             const tableElement = document.getElementById('applicationsTable');
+            const paginationControls = document.getElementById('paginationControls');
+            const paginationStart = document.getElementById('paginationStart');
+            const paginationEnd = document.getElementById('paginationEnd');
+            const paginationTotal = document.getElementById('paginationTotal');
+            const prevPageBtn = document.getElementById('prevPageBtn');
+            const nextPageBtn = document.getElementById('nextPageBtn');
+            const pageIndicator = document.getElementById('pageIndicator');
+
+            let currentPage = 1;
+            let pageSize = 50;
+            let currentSort = 'latest';
 
             function filterTable() {
                 const query = tableSearch.value.toLowerCase().trim();
                 const selectedStatus = statusFilter.value;
-                let visibleCount = 0;
+                const matchingRows = [];
 
                 tableRows.forEach(row => {
                     const rowStatus = row.getAttribute('data-status');
@@ -1109,22 +1310,80 @@ foreach ($jobTypeData as $item) {
                             : rowStatus === selectedStatus);
 
                     if (matchesSearch && matchesStatus) {
-                        row.style.display = '';
-                        visibleCount++;
+                        matchingRows.push(row);
                     } else {
                         row.style.display = 'none';
+                    }
+                });
+
+                // Sort matching rows by date
+                const tbody = tableElement.querySelector('tbody');
+                matchingRows.sort((a, b) => {
+                    const dateA = a.getAttribute('data-date') || '';
+                    const dateB = b.getAttribute('data-date') || '';
+                    if (currentSort === 'latest') {
+                        return dateB.localeCompare(dateA);
+                    } else {
+                        return dateA.localeCompare(dateB);
+                    }
+                });
+                // Re-append sorted rows to DOM (non-matching rows stay hidden at end)
+                matchingRows.forEach(row => tbody.appendChild(row));
+
+                const visibleCount = matchingRows.length;
+                let totalPages = 1;
+                const effectivePageSize = pageSize === 'all' ? visibleCount : pageSize;
+
+                if (effectivePageSize > 0 && visibleCount > 0) {
+                    totalPages = Math.ceil(visibleCount / effectivePageSize);
+                }
+
+                // Clamp currentPage
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+                if (currentPage < 1) {
+                    currentPage = 1;
+                }
+
+                // Display rows for current page
+                matchingRows.forEach((row, index) => {
+                    if (pageSize === 'all') {
+                        row.style.display = '';
+                    } else {
+                        const startIdx = (currentPage - 1) * pageSize;
+                        const endIdx = startIdx + pageSize;
+                        if (index >= startIdx && index < endIdx) {
+                            row.style.display = '';
+                        } else {
+                            row.style.display = 'none';
+                        }
                     }
                 });
 
                 if (visibleCount === 0) {
                     tableElement.style.display = 'none';
                     noResults.style.display = '';
+                    paginationControls.style.display = 'none';
                 } else {
                     tableElement.style.display = '';
                     noResults.style.display = 'none';
+                    paginationControls.style.display = '';
+
+                    const startEntry = pageSize === 'all' ? 1 : (currentPage - 1) * pageSize + 1;
+                    const endEntry = pageSize === 'all' ? visibleCount : Math.min(currentPage * pageSize, visibleCount);
+
+                    paginationStart.textContent = startEntry.toString();
+                    paginationEnd.textContent = endEntry.toString();
+                    paginationTotal.textContent = visibleCount.toString();
+
+                    pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
+
+                    prevPageBtn.disabled = (currentPage === 1);
+                    nextPageBtn.disabled = (currentPage === totalPages);
                 }
 
-                // Sync filters to URL query parameters
+                // Sync filters & pagination to URL query parameters
                 const currentParams = new URLSearchParams(window.location.search);
                 if (query !== '') {
                     currentParams.set('search', tableSearch.value);
@@ -1136,12 +1395,39 @@ foreach ($jobTypeData as $item) {
                 } else {
                     currentParams.delete('status');
                 }
+
+                currentParams.set('limit', pageSize.toString());
+                currentParams.set('page', currentPage.toString());
+                currentParams.set('sort', currentSort);
+
                 const newSearch = currentParams.toString();
                 const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '');
                 window.history.replaceState(null, '', newUrl);
+
+                // Dynamically sync Export Excel button's href to current active filters
+                const exportBtn = document.getElementById('exportExcelBtn');
+                if (exportBtn) {
+                    const exportParams = new URLSearchParams();
+                    if (selectedStatus !== '') {
+                        exportParams.set('status', selectedStatus);
+                    }
+                    if (query !== '') {
+                        exportParams.set('search', tableSearch.value);
+                    }
+                    if (currentParams.has('job_type')) {
+                        exportParams.set('job_type', currentParams.get('job_type'));
+                    }
+                    if (currentParams.has('platform')) {
+                        exportParams.set('platform', currentParams.get('platform'));
+                    }
+                    if (currentParams.has('assessment_status')) {
+                        exportParams.set('assessment_status', currentParams.get('assessment_status'));
+                    }
+                    exportBtn.href = 'export.php' + (exportParams.toString() ? '?' + exportParams.toString() : '');
+                }
             }
 
-            // Load filters from URL parameters on page load
+            // Load filters and pagination from URL parameters on page load
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('search')) {
                 tableSearch.value = urlParams.get('search');
@@ -1149,9 +1435,101 @@ foreach ($jobTypeData as $item) {
             if (urlParams.has('status')) {
                 statusFilter.value = urlParams.get('status');
             }
+            if (urlParams.has('limit')) {
+                const urlLimit = urlParams.get('limit');
+                if (['10', '20', '50', 'all'].includes(urlLimit)) {
+                    pageSize = urlLimit === 'all' ? 'all' : parseInt(urlLimit, 10);
+                    limitFilter.value = urlLimit;
+                }
+            } else {
+                limitFilter.value = pageSize.toString();
+            }
+            if (urlParams.has('page')) {
+                const urlPage = parseInt(urlParams.get('page'), 10);
+                if (urlPage > 0) {
+                    currentPage = urlPage;
+                }
+            }
+            if (urlParams.has('sort')) {
+                const urlSort = urlParams.get('sort');
+                if (['latest', 'earliest'].includes(urlSort)) {
+                    currentSort = urlSort;
+                    sortOrder.value = urlSort;
+                }
+            }
+
             filterTable();
 
-            tableSearch.addEventListener('input', filterTable);
+            tableSearch.addEventListener('input', function () {
+                currentPage = 1;
+                filterTable();
+            });
+
+            limitFilter.addEventListener('change', function () {
+                const val = limitFilter.value;
+                pageSize = val === 'all' ? 'all' : parseInt(val, 10);
+                currentPage = 1;
+                filterTable();
+            });
+
+            sortOrder.addEventListener('change', function () {
+                currentSort = sortOrder.value;
+                currentPage = 1;
+                filterTable();
+            });
+
+            prevPageBtn.addEventListener('click', function () {
+                if (currentPage > 1) {
+                    currentPage--;
+                    filterTable();
+                    tableElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
+
+            nextPageBtn.addEventListener('click', function () {
+                // Determine max pages again dynamically
+                const query = tableSearch.value.toLowerCase().trim();
+                const selectedStatus = statusFilter.value;
+                let visibleCount = 0;
+                tableRows.forEach(row => {
+                    const rowStatus = row.getAttribute('data-status');
+                    let detailText = '';
+                    const detailDataStr = row.getAttribute('data-detail');
+                    if (detailDataStr) {
+                        try {
+                            const details = JSON.parse(detailDataStr);
+                            detailText = [
+                                details.company,
+                                details.job_title,
+                                details.platform,
+                                details.location,
+                                details.remark,
+                                details.technical_skills
+                            ].filter(Boolean).join(' ').toLowerCase();
+                        } catch (e) {}
+                    }
+                    const textContent = Array.from(row.querySelectorAll('.searchable'))
+                        .map(cell => cell.textContent.toLowerCase())
+                        .join(' ') + ' ' + detailText;
+                    
+                    const matchesSearch = query === '' || textContent.includes(query);
+                    const matchesStatus = selectedStatus === '' || 
+                        (selectedStatus === 'Expired_Rejected' 
+                            ? (rowStatus === 'Expired' || rowStatus === 'Rejected' || rowStatus === 'Unlikely to Progress Further') 
+                            : rowStatus === selectedStatus);
+                    if (matchesSearch && matchesStatus) {
+                        visibleCount++;
+                    }
+                });
+                const effectivePageSize = pageSize === 'all' ? visibleCount : pageSize;
+                const totalPages = Math.ceil(visibleCount / effectivePageSize);
+
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    filterTable();
+                    tableElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
 
             // Status dropdown triggers a full page reload so PHP always
             // renders the correct unfiltered dataset before JS applies search.
@@ -1166,6 +1544,9 @@ foreach ($jobTypeData as $item) {
                 // Preserve view and other params, strip stale search
                 params.delete('search');
                 params.set('view', 'applications');
+                params.set('limit', pageSize.toString());
+                params.set('page', '1');
+                params.set('sort', currentSort);
                 window.location.href = window.location.pathname + '?' + params.toString();
             });
         <?php endif; ?>

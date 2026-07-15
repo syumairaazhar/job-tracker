@@ -187,7 +187,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Job Tracker</title>
-    <link rel="stylesheet" href="style.css?v=1.0.4">
+    <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
 
@@ -290,36 +290,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
 
                     <div class="form-grid">
+
+                        <!-- ── Section 1: Job Details ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">1</span>
+                            <div>
+                                <div class="form-section-title">Job Details</div>
+                                <div class="form-section-subtitle">Basic information about the position</div>
+                            </div>
+                        </div>
+
                         <div class="form-group">
-                            <label>Company Name *</label>
+                            <label>Company Name <span class="required-star">*</span></label>
                             <input type="text" name="company" required value="<?= htmlspecialchars($app['company']) ?>" placeholder="e.g. Google, Stripe, Canva">
                         </div>
 
                         <div class="form-group">
-                            <label>Job Title *</label>
+                            <label>Job Title <span class="required-star">*</span></label>
                             <input type="text" name="job_title" required value="<?= htmlspecialchars($app['job_title']) ?>" placeholder="e.g. Senior Software Engineer">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Date Found Job</label>
-                            <input type="date" name="date_found" value="<?= htmlspecialchars($app['date_found'] ?: '') ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Date Applied</label>
-                            <input type="date" name="date_applied" value="<?= htmlspecialchars($app['date_applied'] ?: '') ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Application Status</label>
-                            <select name="status">
-                                <?php 
-                                $statuses = ['Saved', 'Pending', 'Applied', 'Responded', 'Interview', 'Assessment', 'Rejected', 'Offered', 'Expired', 'Unlikely to Progress Further'];
-                                foreach ($statuses as $stat): 
-                                ?>
-                                    <option <?= $app['status'] === $stat ? 'selected' : '' ?>><?= $stat ?></option>
-                                <?php endforeach; ?>
-                            </select>
                         </div>
 
                         <div class="form-group">
@@ -343,8 +331,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <select name="job_type">
                                 <?php 
                                 $types = ['Full-time', 'Part-time', 'Internship', 'Contract', 'Remote', 'Hybrid'];
-                                foreach ($types as $type): 
-                                ?>
+                                foreach ($types as $type): ?>
                                     <option <?= $app['job_type'] === $type ? 'selected' : '' ?>><?= $type ?></option>
                                 <?php endforeach; ?>
                             </select>
@@ -357,12 +344,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <div class="form-group">
                             <label>Salary Range</label>
-                            <input type="text" name="salary_range" value="<?= htmlspecialchars($app['salary_range'] ?: '') ?>" placeholder="e.g. RM 5,000 - RM 7,000">
+                            <input type="text" name="salary_range" value="<?= htmlspecialchars($app['salary_range'] ?: '') ?>" placeholder="e.g. RM 5,000 – RM 7,000">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label>Job Link</label>
+                            <input type="url" name="job_link" value="<?= htmlspecialchars($app['job_link'] ?: '') ?>" placeholder="https://...">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label>Technical / Skills Required</label>
+                            <input type="text" name="technical_skills" value="<?= htmlspecialchars($app['technical_skills'] ?: '') ?>" placeholder="e.g. React, PHP, SQL, Figma">
+                        </div>
+
+                        <!-- ── Section 2: Status & Tracking ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">2</span>
+                            <div>
+                                <div class="form-section-title">Status &amp; Tracking</div>
+                                <div class="form-section-subtitle">Track your application progress and dates</div>
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label>Job Link</label>
-                            <input type="url" name="job_link" value="<?= htmlspecialchars($app['job_link'] ?: '') ?>" placeholder="https://...">
+                            <label>Application Status</label>
+                            <select name="status">
+                                <?php 
+                                $statuses = ['Saved', 'Pending', 'Applied', 'Responded', 'Interview', 'Assessment', 'Rejected', 'Offered', 'Expired', 'Unlikely to Progress Further'];
+                                foreach ($statuses as $stat): ?>
+                                    <option <?= $app['status'] === $stat ? 'selected' : '' ?>><?= $stat ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Found Job</label>
+                            <input type="date" name="date_found" value="<?= htmlspecialchars($app['date_found'] ?: '') ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Applied</label>
+                            <input type="date" name="date_applied" value="<?= htmlspecialchars($app['date_applied'] ?: '') ?>">
                         </div>
 
                         <div class="form-group">
@@ -380,12 +402,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <input type="text" name="result" value="<?= htmlspecialchars($app['result'] ?: '') ?>" placeholder="e.g. Passed, Pending, Shortlisted">
                         </div>
 
-                        <div class="form-group">
-                            <label>Technical / Skills Required</label>
-                            <input type="text" name="technical_skills" value="<?= htmlspecialchars($app['technical_skills'] ?: '') ?>" placeholder="e.g. React, PHP, SQL, Figma">
+                        <div class="form-group full-width">
+                            <label>Remark</label>
+                            <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."><?= htmlspecialchars($app['remark'] ?: '') ?></textarea>
                         </div>
 
-                        <!-- Assessment Tracker Section -->
+                        <!-- ── Section 3: Assessment Details ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">3</span>
+                            <div>
+                                <div class="form-section-title">Assessment</div>
+                                <div class="form-section-subtitle">Track any online tests or assessments</div>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <label>Assessment Status</label>
                             <select name="assessment_status" id="assessment_status" onchange="toggleAssessmentFields()">
@@ -402,8 +432,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                     <option value="" disabled <?= empty($app['assessment_type']) ? 'selected' : '' ?>>Select assessment type</option>
                                     <?php 
                                     $a_types = ['Behavioral Assessment', 'Technical / Coding Test', 'Cognitive / Aptitude Test', 'Take-home Assignment', 'English / Communication Test'];
-                                    foreach ($a_types as $type):
-                                    ?>
+                                    foreach ($a_types as $type): ?>
                                         <option value="<?= $type ?>" <?= ($app['assessment_type'] ?? '') === $type ? 'selected' : '' ?>><?= $type ?></option>
                                     <?php endforeach; ?>
                                 </select>
@@ -428,7 +457,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <div class="assessment-suggestions-container" id="assessment_suggestions_box">
                                 <div class="suggestions-card">
                                     <div class="suggestions-header">
-                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions & Tips</h3>
+                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions &amp; Tips</h3>
                                     </div>
                                     <div class="suggestions-body" id="assessment_suggestions_body">
                                         <!-- Tips injected dynamically via JavaScript -->
@@ -437,14 +466,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                         </div>
 
-                        <div class="form-group full-width">
-                            <label>Remark</label>
-                            <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."><?= htmlspecialchars($app['remark'] ?: '') ?></textarea>
-                        </div>
                     </div>
 
                     <div class="form-actions">
-                        <button type="submit" class="btn">Update Details</button>
+                        <button type="submit" class="btn">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Update Details
+                        </button>
                         <a href="<?= htmlspecialchars($back) ?>" class="back">Cancel</a>
                     </div>
                 </form>

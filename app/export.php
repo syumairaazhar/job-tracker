@@ -2,17 +2,18 @@
 session_start();
 include 'db.php';
 
-// Build the query with optional filters (mirrors index.php filter logic)
-$filterStatus   = $_GET['status']   ?? '';
-$filterJobType  = $_GET['job_type'] ?? '';
-$filterPlatform = $_GET['platform'] ?? '';
+$filterStatus           = $_GET['status']            ?? '';
+$filterJobType          = $_GET['job_type']          ?? '';
+$filterPlatform         = $_GET['platform']          ?? '';
+$filterAssessmentStatus = $_GET['assessment_status'] ?? '';
+$filterSearch           = $_GET['search']            ?? '';
 
 $where  = [];
 $params = [];
 
 if ($filterStatus !== '') {
     if ($filterStatus === 'Expired_Rejected') {
-        $where[]  = "(status = 'Expired' OR status = 'Rejected')";
+        $where[]  = "(status = 'Expired' OR status = 'Rejected' OR status = 'Unlikely to Progress Further')";
     } else {
         $where[]  = "status = ?";
         $params[] = $filterStatus;
@@ -25,6 +26,21 @@ if ($filterJobType !== '') {
 if ($filterPlatform !== '') {
     $where[]  = "platform = ?";
     $params[] = $filterPlatform;
+}
+if ($filterAssessmentStatus !== '') {
+    if ($filterAssessmentStatus === 'None') {
+        $where[] = "(assessment_status IS NULL OR assessment_status = 'None' OR assessment_status = '')";
+    } else {
+        $where[] = "assessment_status = ?";
+        $params[] = $filterAssessmentStatus;
+    }
+}
+if ($filterSearch !== '') {
+    $searchTerm = '%' . $filterSearch . '%';
+    $where[] = "(company LIKE ? OR job_title LIKE ? OR platform LIKE ? OR location LIKE ? OR remark LIKE ? OR technical_skills LIKE ?)";
+    for ($i = 0; $i < 6; $i++) {
+        $params[] = $searchTerm;
+    }
 }
 
 $sql = "SELECT * FROM applications";
