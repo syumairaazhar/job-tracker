@@ -445,86 +445,130 @@ tr:hover {
 }
 
 /* Status-differentiated table row pastel colors */
+/* Status-differentiated table row colors with clean left border accents */
 tr.status-saved {
-    background: rgba(100, 116, 139, 0.02);
+    background: rgba(100, 116, 139, 0.04);
+}
+tr.status-saved td:first-child {
+    border-left: 4px solid #64748b;
 }
 
 tr.status-pending {
-    background: rgba(231, 238, 20, 0.092);
+    background: rgba(234, 88, 12, 0.06);
+}
+tr.status-pending td:first-child {
+    border-left: 4px solid #ea580c;
 }
 
 tr.status-applied {
-    background: rgba(59, 130, 246, 0.02);
+    background: rgba(37, 99, 235, 0.05);
+}
+tr.status-applied td:first-child {
+    border-left: 4px solid #2563eb;
+}
+
+tr.status-viewed-application {
+    background: rgba(124, 58, 237, 0.05);
+}
+tr.status-viewed-application td:first-child {
+    border-left: 4px solid #7c3aed;
 }
 
 tr.status-responded {
-    background: rgba(168, 85, 247, 0.02);
+    background: rgba(168, 85, 247, 0.05);
+}
+tr.status-responded td:first-child {
+    border-left: 4px solid #a855f7;
 }
 
 tr.status-interview {
-    background: rgba(245, 158, 11, 0.02);
+    background: rgba(219, 39, 119, 0.06);
+}
+tr.status-interview td:first-child {
+    border-left: 4px solid #db2777;
 }
 
 tr.status-assessment {
-    background: rgba(6, 182, 212, 0.02);
+    background: rgba(8, 145, 178, 0.05);
+}
+tr.status-assessment td:first-child {
+    border-left: 4px solid #0891b2;
 }
 
 tr.status-rejected {
-    background: rgba(244, 63, 94, 0.02);
+    background: rgba(220, 38, 38, 0.04);
+}
+tr.status-rejected td:first-child {
+    border-left: 4px solid #dc2626;
 }
 
 tr.status-offered {
-    background: rgba(16, 185, 129, 0.02);
+    background: rgba(22, 163, 74, 0.05);
+}
+tr.status-offered td:first-child {
+    border-left: 4px solid #16a34a;
 }
 
 tr.status-expired {
-    background: rgba(100, 116, 139, 0.02);
+    background: rgba(100, 116, 139, 0.05);
+}
+tr.status-expired td:first-child {
+    border-left: 4px solid #94a3b8;
 }
 
 tr.status-unlikely-to-progress,
 tr.status-unlikely-to-progress-further {
-    background: rgba(219, 39, 119, 0.02);
+    background: rgba(190, 24, 93, 0.05);
+}
+tr.status-unlikely-to-progress td:first-child,
+tr.status-unlikely-to-progress-further td:first-child {
+    border-left: 4px solid #be185d;
 }
 
+/* Hover States (Slightly more saturated highlight) */
 tr.status-saved:hover {
-    background: rgba(100, 116, 139, 0.07);
+    background: rgba(100, 116, 139, 0.09);
 }
 
 tr.status-pending:hover {
-    background: rgba(231, 238, 20, 0.177);
+    background: rgba(234, 88, 12, 0.12);
 }
 
 tr.status-applied:hover {
-    background: rgba(59, 130, 246, 0.07);
+    background: rgba(37, 99, 235, 0.11);
+}
+
+tr.status-viewed-application:hover {
+    background: rgba(124, 58, 237, 0.11);
 }
 
 tr.status-responded:hover {
-    background: rgba(168, 85, 247, 0.07);
+    background: rgba(168, 85, 247, 0.11);
 }
 
 tr.status-interview:hover {
-    background: rgba(245, 158, 11, 0.07);
+    background: rgba(219, 39, 119, 0.12);
 }
 
 tr.status-assessment:hover {
-    background: rgba(6, 182, 212, 0.07);
+    background: rgba(8, 145, 178, 0.11);
 }
 
 tr.status-rejected:hover {
-    background: rgba(244, 63, 94, 0.07);
+    background: rgba(220, 38, 38, 0.09);
 }
 
 tr.status-offered:hover {
-    background: rgba(16, 185, 129, 0.07);
+    background: rgba(22, 163, 74, 0.11);
 }
 
 tr.status-expired:hover {
-    background: rgba(100, 116, 139, 0.07);
+    background: rgba(100, 116, 139, 0.11);
 }
 
 tr.status-unlikely-to-progress:hover,
 tr.status-unlikely-to-progress-further:hover {
-    background: rgba(219, 39, 119, 0.07);
+    background: rgba(190, 24, 93, 0.11);
 }
 
 /* Badges styling (Super cute colorful pastel corporate theme) */
@@ -555,6 +599,12 @@ tr.status-unlikely-to-progress-further:hover {
     background: #eff6ff;
     color: #1d4ed8;
     border: 1px solid #bfdbfe;
+}
+
+.badge.viewed-application {
+    background: #f5f3ff;
+    color: #6d28d9;
+    border: 1px solid #ddd6fe;
 }
 
 .badge.responded {
@@ -1310,6 +1360,29 @@ textarea {
 
     .form-container {
         padding: 24px;
+    }
+
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .form-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .form-actions .back {
+        width: 100%;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        padding: 14px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-secondary);
+        box-sizing: border-box;
     }
 
     .analytics-grid {

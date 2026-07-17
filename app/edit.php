@@ -81,6 +81,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $assessment_deadline = trim($_POST['assessment_deadline'] ?? '');
     $assessment_link = trim($_POST['assessment_link'] ?? '');
     $assessment_notes = trim($_POST['assessment_notes'] ?? '');
+    $interview_location = trim($_POST['interview_location'] ?? '');
+    $assessment_platform = trim($_POST['assessment_platform'] ?? '');
+    $location_link = trim($_POST['location_link'] ?? '');
+    $interview_location_link = trim($_POST['interview_location_link'] ?? '');
 
     // Auto-promote assessment_status to 'Pending' if a deadline is set but status was left as 'None'
     if (!empty($assessment_deadline) && $assessment_status === 'None') {
@@ -93,7 +97,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         $updateStmt = $pdo->prepare("
             UPDATE applications 
-            SET company = ?, job_title = ?, date_found = ?, date_applied = ?, status = ?, platform = ?, job_type = ?, location = ?, salary_range = ?, job_link = ?, remark = ?, follow_up_date = ?, interview_date = ?, result = ?, technical_skills = ?, assessment_status = ?, assessment_type = ?, assessment_deadline = ?, assessment_link = ?, assessment_notes = ?
+            SET company = ?, job_title = ?, date_found = ?, date_applied = ?, status = ?, platform = ?, job_type = ?, location = ?, salary_range = ?, job_link = ?, remark = ?, follow_up_date = ?, interview_date = ?, result = ?, technical_skills = ?, assessment_status = ?, assessment_type = ?, assessment_deadline = ?, assessment_link = ?, assessment_notes = ?, interview_location = ?, assessment_platform = ?, location_link = ?, interview_location_link = ?
             WHERE id = ?
         ");
 
@@ -118,6 +122,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $assessment_deadline ?: null,
             $assessment_link ?: null,
             $assessment_notes ?: null,
+            $interview_location ?: null,
+            $assessment_platform ?: null,
+            $location_link ?: null,
+            $interview_location_link ?: null,
             $id
         ]);
 
@@ -343,6 +351,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         </div>
 
                         <div class="form-group">
+                            <label>Location Map Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
+                            <input type="url" name="location_link" value="<?= htmlspecialchars($app['location_link'] ?? '') ?>" placeholder="https://maps.google.com/...">
+                        </div>
+
+                        <div class="form-group">
                             <label>Salary Range</label>
                             <input type="text" name="salary_range" value="<?= htmlspecialchars($app['salary_range'] ?: '') ?>" placeholder="e.g. RM 5,000 – RM 7,000">
                         </div>
@@ -368,13 +381,80 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <div class="form-group">
                             <label>Application Status</label>
-                            <select name="status">
+                            <select name="status" id="app_status" onchange="toggleStatusFields()">
                                 <?php 
-                                $statuses = ['Saved', 'Pending', 'Applied', 'Responded', 'Interview', 'Assessment', 'Rejected', 'Offered', 'Expired', 'Unlikely to Progress Further'];
+                                $statuses = ['Applied', 'Pending', 'Viewed Application', 'Interview', 'Assessment', 'Rejected', 'Offered', 'Expired', 'Unlikely to Progress Further'];
                                 foreach ($statuses as $stat): ?>
                                     <option <?= $app['status'] === $stat ? 'selected' : '' ?>><?= $stat ?></option>
                                 <?php endforeach; ?>
                             </select>
+                        </div>
+
+                        <!-- ── Interview Fields (shown when status = Interview) ── -->
+                        <div id="interview_fields" style="display:none;">
+                            <div class="form-group">
+                                <label>Interview Date</label>
+                                <input type="date" name="interview_date" id="interview_date" value="<?= htmlspecialchars($app['interview_date'] ?: '') ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Interview Location</label>
+                                <input type="text" name="interview_location" id="interview_location" value="<?= htmlspecialchars($app['interview_location'] ?? '') ?>" placeholder="e.g. Zoom, Google Meet, Kuala Lumpur Office">
+                            </div>
+                            <div class="form-group">
+                                <label>Interview Location Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
+                                <input type="url" name="interview_location_link" id="interview_location_link" value="<?= htmlspecialchars($app['interview_location_link'] ?? '') ?>" placeholder="https://maps.google.com/...">
+                            </div>
+                        </div>
+
+                        <!-- ── Assessment Inline Fields (shown when status = Assessment) ── -->
+                        <div id="assessment_status_fields" style="display:none;">
+                            <div class="form-group">
+                                <label>Assessment Type</label>
+                                <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
+                                    <option value="" disabled <?= empty($app['assessment_type']) ? 'selected' : '' ?>>Select assessment type</option>
+                                    <?php 
+                                    $a_types = ['Behavioral Assessment', 'Technical / Coding Test', 'Cognitive / Aptitude Test', 'Take-home Assignment', 'English / Communication Test'];
+                                    foreach ($a_types as $type): ?>
+                                        <option value="<?= $type ?>" <?= ($app['assessment_type'] ?? '') === $type ? 'selected' : '' ?>><?= $type ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment Date</label>
+                                <input type="date" name="assessment_deadline" id="assessment_deadline" value="<?= htmlspecialchars($app['assessment_deadline'] ?? '') ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment Status</label>
+                                <select name="assessment_status" id="assessment_status">
+                                    <option value="None" <?= ($app['assessment_status'] ?? 'None') === 'None' ? 'selected' : '' ?>>None</option>
+                                    <option value="Pending" <?= ($app['assessment_status'] ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                    <option value="Completed" <?= ($app['assessment_status'] ?? '') === 'Completed' ? 'selected' : '' ?>>Completed</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment Platform</label>
+                                <input type="text" name="assessment_platform" id="assessment_platform" value="<?= htmlspecialchars($app['assessment_platform'] ?? '') ?>" placeholder="e.g. HackerRank, Codility, Custom Portal">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Assessment Link</label>
+                                <input type="url" name="assessment_link" id="assessment_link" value="<?= htmlspecialchars($app['assessment_link'] ?? '') ?>" placeholder="https://...">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Assessment Notes / Reminders</label>
+                                <textarea name="assessment_notes" id="assessment_notes" placeholder="e.g. Needs to be completed in one sitting, study company values..."><?= htmlspecialchars($app['assessment_notes'] ?? '') ?></textarea>
+                            </div>
+
+                            <!-- Preparation Suggestions Box -->
+                            <div class="assessment-suggestions-container full-width" id="assessment_suggestions_box" style="grid-column: 1 / -1;">
+                                <div class="suggestions-card">
+                                    <div class="suggestions-header">
+                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions &amp; Tips</h3>
+                                    </div>
+                                    <div class="suggestions-body" id="assessment_suggestions_body">
+                                        <!-- Tips injected dynamically via JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -385,11 +465,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <div class="form-group">
                             <label>Date Applied</label>
                             <input type="date" name="date_applied" value="<?= htmlspecialchars($app['date_applied'] ?: '') ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Interview Date</label>
-                            <input type="date" name="interview_date" value="<?= htmlspecialchars($app['interview_date'] ?: '') ?>">
                         </div>
 
                         <div class="form-group">
@@ -406,66 +481,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <label>Remark</label>
                             <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."><?= htmlspecialchars($app['remark'] ?: '') ?></textarea>
                         </div>
-
-                        <!-- ── Section 3: Assessment Details ── -->
-                        <div class="form-section-header">
-                            <span class="form-section-number">3</span>
-                            <div>
-                                <div class="form-section-title">Assessment</div>
-                                <div class="form-section-subtitle">Track any online tests or assessments</div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Assessment Status</label>
-                            <select name="assessment_status" id="assessment_status" onchange="toggleAssessmentFields()">
-                                <option value="None" <?= ($app['assessment_status'] ?? 'None') === 'None' ? 'selected' : '' ?>>None</option>
-                                <option value="Pending" <?= ($app['assessment_status'] ?? '') === 'Pending' ? 'selected' : '' ?>>Pending</option>
-                                <option value="Completed" <?= ($app['assessment_status'] ?? '') === 'Completed' ? 'selected' : '' ?>>Completed</option>
-                            </select>
-                        </div>
-
-                        <div id="assessment_extra_fields" style="display: none;">
-                            <div class="form-group">
-                                <label>Assessment Type</label>
-                                <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
-                                    <option value="" disabled <?= empty($app['assessment_type']) ? 'selected' : '' ?>>Select assessment type</option>
-                                    <?php 
-                                    $a_types = ['Behavioral Assessment', 'Technical / Coding Test', 'Cognitive / Aptitude Test', 'Take-home Assignment', 'English / Communication Test'];
-                                    foreach ($a_types as $type): ?>
-                                        <option value="<?= $type ?>" <?= ($app['assessment_type'] ?? '') === $type ? 'selected' : '' ?>><?= $type ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Assessment Deadline</label>
-                                <input type="date" name="assessment_deadline" id="assessment_deadline" value="<?= htmlspecialchars($app['assessment_deadline'] ?? '') ?>">
-                            </div>
-
-                            <div class="form-group">
-                                <label>Assessment Link</label>
-                                <input type="url" name="assessment_link" id="assessment_link" value="<?= htmlspecialchars($app['assessment_link'] ?? '') ?>" placeholder="https://...">
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label>Assessment Notes / Reminders</label>
-                                <textarea name="assessment_notes" id="assessment_notes" placeholder="e.g. Needs to be completed in one sitting, study company values..."><?= htmlspecialchars($app['assessment_notes'] ?? '') ?></textarea>
-                            </div>
-
-                            <!-- Preparation Suggestions Box -->
-                            <div class="assessment-suggestions-container" id="assessment_suggestions_box">
-                                <div class="suggestions-card">
-                                    <div class="suggestions-header">
-                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions &amp; Tips</h3>
-                                    </div>
-                                    <div class="suggestions-body" id="assessment_suggestions_body">
-                                        <!-- Tips injected dynamically via JavaScript -->
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                     </div>
 
                     <div class="form-actions">
@@ -494,105 +509,105 @@ function togglePlatformOther(select) {
     }
 }
 
-// Toggle assessment fields visibility based on status
-function toggleAssessmentFields() {
-    const status = document.getElementById('assessment_status').value;
-    const extraFields = document.getElementById('assessment_extra_fields');
-    const typeSelect = document.getElementById('assessment_type');
-    
-    if (status !== 'None') {
-        extraFields.style.display = 'contents'; // Fits inside CSS Grid
-        toggleAssessmentSuggestions();
-    } else {
-        extraFields.style.display = 'none';
-        document.getElementById('assessment_suggestions_box').classList.remove('active');
-    }
-}
 
-// Show dynamic tips based on type
+// Show dynamic tips based on assessment type
 function toggleAssessmentSuggestions() {
-    const type = document.getElementById('assessment_type').value;
+    const type = document.getElementById('assessment_type') ? document.getElementById('assessment_type').value : '';
     const container = document.getElementById('assessment_suggestions_box');
+    if (!container || !type) { if (container) container.classList.remove('active'); return; }
     const tipsBody = document.getElementById('assessment_suggestions_body');
     const tipsTitle = document.getElementById('assessment_suggestions_title');
-    
-    if (!type || document.getElementById('assessment_status').value === 'None') {
-        container.classList.remove('active');
-        return;
-    }
-    
+
     let titleText = '';
     let tipsHTML = '';
-    
+
     switch (type) {
         case 'Behavioral Assessment':
             titleText = '💡 Behavioral Assessment Preparation Tips';
-            tipsHTML = `
-                <ul>
-                    <li><strong>The STAR Method:</strong> Always frame your answers with: <b>S</b>ituation, <b>T</b>ask, <b>A</b>ction, <b>R</b>esult. Be specific about your actions and quantify results.</li>
-                    <li><strong>Company Core Values:</strong> Research the company's culture. Align your answers with their specific core values (e.g. customer obsession, collaboration).</li>
-                    <li><strong>Consistency check:</strong> These tests often ask the same question in multiple formats. Answer honestly and consistently—don't try to guess what the system wants.</li>
-                    <li><strong>Time Management:</strong> Don't overthink personality test questions. Trust your first instinct; they are usually timed.</li>
-                </ul>
-            `;
+            tipsHTML = `<ul>
+                    <li><strong>The STAR Method:</strong> Always frame your answers with: <b>S</b>ituation, <b>T</b>ask, <b>A</b>ction, <b>R</b>esult.</li>
+                    <li><strong>Company Core Values:</strong> Research the company's culture. Align your answers with their values.</li>
+                    <li><strong>Consistency check:</strong> Answer honestly and consistently—don't try to game the system.</li>
+                    <li><strong>Time Management:</strong> Trust your first instinct; they are usually timed.</li>
+                </ul>`;
             break;
         case 'Technical / Coding Test':
             titleText = '💻 Technical & Coding Test Strategy';
-            tipsHTML = `
-                <ul>
-                    <li><strong>Think Out Loud:</strong> Talk through your reasoning, trade-offs, and design choices. Solvers who explain their thought process score higher even with bugs.</li>
-                    <li><strong>Brute Force First:</strong> Write a working naive solution first, then optimize. It secures partial points and ensures you have something functional.</li>
-                    <li><strong>Edge Cases:</strong> Test for empty arrays, null values, negative inputs, large numbers, and boundary limits.</li>
-                    <li><strong>Core DSA:</strong> Review Arrays, HashMaps, Trees, Graphs, Sorting algorithms, and Space/Time Complexity.</li>
-                </ul>
-            `;
+            tipsHTML = `<ul>
+                    <li><strong>Think Out Loud:</strong> Talk through your reasoning and design choices.</li>
+                    <li><strong>Brute Force First:</strong> Write a working naive solution first, then optimize.</li>
+                    <li><strong>Edge Cases:</strong> Test for empty arrays, null values, negative inputs, and boundary limits.</li>
+                    <li><strong>Core DSA:</strong> Review Arrays, HashMaps, Trees, Graphs, Sorting, and Complexity.</li>
+                </ul>`;
             break;
         case 'Cognitive / Aptitude Test':
             titleText = '🧠 Cognitive & Aptitude Test Hacks';
-            tipsHTML = `
-                <ul>
-                    <li><strong>Manage Time Strictly:</strong> These tests are designed to be speed-runs. If a logic puzzle takes more than 45 seconds, guess and move on.</li>
-                    <li><strong>Do Not Get Stuck:</strong> Harder questions are placed to consume your time. Skip them and return if the interface allows.</li>
-                    <li><strong>Warm-up:</strong> Play simple brain puzzles or practice similar numerical reasoning tests for 15 minutes before opening the real exam.</li>
-                    <li><strong>Elimination Method:</strong> Eliminate clearly wrong options to improve your guessing odds.</li>
-                </ul>
-            `;
+            tipsHTML = `<ul>
+                    <li><strong>Manage Time Strictly:</strong> If a logic puzzle takes more than 45 seconds, guess and move on.</li>
+                    <li><strong>Do Not Get Stuck:</strong> Skip harder questions and return if the interface allows.</li>
+                    <li><strong>Warm-up:</strong> Practice similar numerical reasoning tests for 15 minutes before the exam.</li>
+                    <li><strong>Elimination Method:</strong> Eliminate clearly wrong options to improve guessing odds.</li>
+                </ul>`;
             break;
         case 'Take-home Assignment':
             titleText = '🏠 Take-home Project Best Practices';
-            tipsHTML = `
-                <ul>
-                    <li><strong>README is Key:</strong> Write a detailed README showing: how to run, how to build, tests, and architectural design choices.</li>
-                    <li><strong>Clean Code:</strong> Treat it like production code. Use clear variable names, separate logic, follow folder structures, and handle errors.</li>
-                    <li><strong>Write Tests:</strong> Add a couple of simple unit/integration tests to show that you value quality assurance.</li>
-                    <li><strong>Git History:</strong> Commit in clean logical units. Companies evaluate your commit history to see how you work.</li>
-                </ul>
-            `;
+            tipsHTML = `<ul>
+                    <li><strong>README is Key:</strong> Write a detailed README with: how to run, how to build, tests, and design choices.</li>
+                    <li><strong>Clean Code:</strong> Use clear variable names, separate logic, and handle errors.</li>
+                    <li><strong>Write Tests:</strong> Add unit/integration tests to show you value quality assurance.</li>
+                    <li><strong>Git History:</strong> Commit in clean logical units.</li>
+                </ul>`;
             break;
         case 'English / Communication Test':
             titleText = '🗣️ Communication & Language Tips';
-            tipsHTML = `
-                <ul>
-                    <li><strong>Speak Clearly:</strong> In verbal recording tests, speak slowly, articulate your words, and ensure your microphone level is perfect.</li>
-                    <li><strong>Structure Answers:</strong> Introduce the topic, explain the main points, and give a quick summary. Avoid unstructured rambling.</li>
-                    <li><strong>Quiet Environment:</strong> Use headphones with a noise-canceling mic. Background noise can fail automated scoring bots.</li>
-                    <li><strong>Grammar & Spelling:</strong> In writing tasks, review your spelling. Avoid using slang or excessive abbreviations.</li>
-                </ul>
-            `;
+            tipsHTML = `<ul>
+                    <li><strong>Speak Clearly:</strong> Speak slowly, articulate your words, and check your microphone level.</li>
+                    <li><strong>Structure Answers:</strong> Introduce the topic, explain main points, then summarize.</li>
+                    <li><strong>Quiet Environment:</strong> Use headphones with a noise-canceling mic.</li>
+                    <li><strong>Grammar & Spelling:</strong> Avoid slang or excessive abbreviations.</li>
+                </ul>`;
             break;
         default:
             container.classList.remove('active');
             return;
     }
-    
+
     tipsTitle.textContent = titleText;
     tipsBody.innerHTML = tipsHTML;
     container.classList.add('active');
 }
 
-// Run visibility check on page load to pre-show if assessment exists
+// Flags set from PHP — true if this record already has saved data for that section
+const hasInterviewData   = <?= (!empty($app['interview_date']) || !empty($app['interview_location'])) ? 'true' : 'false' ?>;
+const hasAssessmentData  = <?= (!empty($app['assessment_deadline']) || !empty($app['assessment_type']) || !empty($app['assessment_notes']) || !empty($app['assessment_link'])) ? 'true' : 'false' ?>;
+
+// Show/hide Interview or Assessment fields based on main status dropdown.
+// Rule: ALWAYS show a section if it has existing saved data, regardless of current status.
+// Also: Interview shows assessment too, since assessments can happen during interviews.
+function toggleStatusFields() {
+    const status = document.getElementById('app_status').value;
+    const interviewFields  = document.getElementById('interview_fields');
+    const assessmentFields = document.getElementById('assessment_status_fields');
+
+    // Interview section: show if status === Interview OR data already exists
+    if (status === 'Interview' || hasInterviewData) {
+        interviewFields.style.display = 'contents';
+    } else {
+        interviewFields.style.display = 'none';
+    }
+
+    // Assessment section: show if status === Interview, Assessment, OR data already exists
+    if (status === 'Interview' || status === 'Assessment' || hasAssessmentData) {
+        assessmentFields.style.display = 'contents';
+        toggleAssessmentSuggestions();
+    } else {
+        assessmentFields.style.display = 'none';
+    }
+}
+
+// Run on page load
 document.addEventListener('DOMContentLoaded', () => {
-    toggleAssessmentFields();
+    toggleStatusFields();
 });
 </script>
 </html>

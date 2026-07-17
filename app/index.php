@@ -95,27 +95,34 @@ foreach ($dismissedStmt->fetchAll(PDO::FETCH_ASSOC) as $d) {
  */
 function serializeAppDetail($row) {
     return json_encode([
-        'id' => (int)$row['id'],
-        'company' => $row['company'],
-        'job_title' => $row['job_title'],
-        'location' => $row['location'] ?: '',
-        'job_type' => $row['job_type'] ?: '',
-        'salary_range' => $row['salary_range'] ?: '',
-        'date_found' => $row['date_found'] ?: '',
-        'date_applied' => $row['date_applied'] ?: '',
-        'interview_date' => $row['interview_date'] ?: '',
-        'follow_up_date' => $row['follow_up_date'] ?: '',
-        'platform' => $row['platform'] ?: '',
-        'status' => $row['status'],
-        'result' => $row['result'] ?: '',
-        'technical_skills' => $row['technical_skills'] ?: '',
-        'job_link' => $row['job_link'] ?: '',
-        'remark' => $row['remark'] ?: '',
-        'assessment_status' => $row['assessment_status'] ?? 'None',
-        'assessment_type' => $row['assessment_type'] ?? '',
-        'assessment_deadline' => $row['assessment_deadline'] ?? '',
-        'assessment_link' => $row['assessment_link'] ?? '',
-        'assessment_notes' => $row['assessment_notes'] ?? '',
+        'id'                  => (int)$row['id'],
+        'company'             => $row['company'],
+        'job_title'           => $row['job_title'],
+        'location'            => $row['location'] ?: '',
+        'job_type'            => $row['job_type'] ?: '',
+        'salary_range'        => $row['salary_range'] ?: '',
+        'date_found'          => $row['date_found'] ?: '',
+        'date_applied'        => $row['date_applied'] ?: '',
+        'follow_up_date'      => $row['follow_up_date'] ?: '',
+        'platform'            => $row['platform'] ?: '',
+        'status'              => $row['status'],
+        'result'              => $row['result'] ?: '',
+        'technical_skills'    => $row['technical_skills'] ?: '',
+        'job_link'            => $row['job_link'] ?: '',
+        'remark'              => $row['remark'] ?: '',
+        // Interview
+        'interview_date'             => $row['interview_date'] ?: '',
+        'interview_location'         => $row['interview_location'] ?? '',
+        'interview_location_link'    => $row['interview_location_link'] ?? '',
+        // Assessment
+        'assessment_status'          => $row['assessment_status'] ?? 'None',
+        'assessment_type'            => $row['assessment_type'] ?? '',
+        'assessment_deadline'        => $row['assessment_deadline'] ?? '',
+        'assessment_platform'        => $row['assessment_platform'] ?? '',
+        'assessment_link'            => $row['assessment_link'] ?? '',
+        'assessment_notes'           => $row['assessment_notes'] ?? '',
+        // Links
+        'location_link'              => $row['location_link'] ?? '',
     ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
 }
 
@@ -137,10 +144,10 @@ foreach ($overdueInterviewsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     ];
 }
 
-// 2. Overdue Follow-ups (Date in the past, status is Applied/Responded)
+// 2. Overdue Follow-ups (Date in the past, status is active)
 $overdueFollowupsStmt = $pdo->prepare("
     SELECT * FROM applications 
-    WHERE (status = 'Applied' OR status = 'Responded') AND follow_up_date < ? 
+    WHERE status IN ('Applied', 'Pending', 'Viewed Application', 'Interview', 'Assessment') AND follow_up_date < ? 
     ORDER BY follow_up_date DESC
 ");
 $overdueFollowupsStmt->execute([$todayStr]);
@@ -670,10 +677,10 @@ foreach ($jobTypeData as $item) {
                                                 </td>
                                                 <td data-label="Actions">
                                                     <div class="action-buttons-cell">
-                                                        <a class="action-btn edit-btn-icon" href="edit.php?id=<?= (int)$row['id'] ?>" title="Edit Application">
+                                                        <a class="action-btn edit-btn-icon" href="edit.php?id=<?= (int)$row['id'] ?>&back=<?= urlencode('index.php?' . http_build_query($_GET)) ?>" title="Edit Application">
                                                             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/></svg>
                                                         </a>
-                                                        <a class="action-btn delete-btn-icon" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" title="Delete Application">
+                                                        <a class="action-btn delete-btn-icon confirm-delete" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" title="Delete Application" data-company="<?= htmlspecialchars($row['company']) ?>">
                                                             <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                                         </a>
                                                     </div>
@@ -728,10 +735,9 @@ foreach ($jobTypeData as $item) {
                             <select id="statusFilter" >
                                 <?php $filterStatus = $_GET['status'] ?? ''; ?>
                                 <option value="" <?= $filterStatus === '' ? 'selected' : '' ?>>All Statuses</option>
-                                <option value="Saved" <?= $filterStatus === 'Saved' ? 'selected' : '' ?>>Saved</option>
-                                <option value="Pending" <?= $filterStatus === 'Pending' ? 'selected' : '' ?>>Pending</option>
                                 <option value="Applied" <?= $filterStatus === 'Applied' ? 'selected' : '' ?>>Applied</option>
-                                <option value="Responded" <?= $filterStatus === 'Responded' ? 'selected' : '' ?>>Responded</option>
+                                <option value="Pending" <?= $filterStatus === 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                <option value="Viewed Application" <?= $filterStatus === 'Viewed Application' ? 'selected' : '' ?>>Viewed Application</option>
                                 <option value="Interview" <?= $filterStatus === 'Interview' ? 'selected' : '' ?>>Interview</option>
                                 <option value="Assessment" <?= $filterStatus === 'Assessment' ? 'selected' : '' ?>>Assessment</option>
                                 <option value="Rejected" <?= $filterStatus === 'Rejected' ? 'selected' : '' ?>>Rejected</option>
@@ -834,10 +840,10 @@ foreach ($jobTypeData as $item) {
                                             </td>
                                             <td data-label="Actions">
                                                 <div class="action-buttons-cell">
-                                                    <a class="action-btn edit-btn-icon" href="edit.php?id=<?= (int)$row['id'] ?>" title="Edit Application">
+                                                    <a class="action-btn edit-btn-icon" href="edit.php?id=<?= (int)$row['id'] ?>&back=<?= urlencode('index.php?' . http_build_query($_GET)) ?>" title="Edit Application">
                                                         <svg viewBox="0 0 24 24" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/></svg>
                                                     </a>
-                                                    <a class="action-btn delete-btn-icon" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" title="Delete Application">
+                                                    <a class="action-btn delete-btn-icon confirm-delete" href="delete.php?id=<?= (int)$row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" title="Delete Application" data-company="<?= htmlspecialchars($row['company']) ?>">
                                                         <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                                     </a>
                                                 </div>
@@ -928,122 +934,149 @@ foreach ($jobTypeData as $item) {
                     </button>
                 </div>
             </div>
-            
+
             <div class="modal-content">
-                <!-- 📋 Job Details Section -->
+
+                <!-- 📋 Job Details — always visible, empty fields hidden -->
                 <div class="modal-section-group">
                     <span class="modal-section-title">📋 Job Details</span>
                     <div class="modal-grid">
-                        <div class="modal-info-item">
+                        <div id="modalLocationItem" class="modal-info-item">
                             <span class="modal-info-label">Location</span>
                             <span id="modalLocation" class="modal-info-value"></span>
                         </div>
-                        <div class="modal-info-item">
+                        <div id="modalJobTypeItem" class="modal-info-item">
                             <span class="modal-info-label">Job Type</span>
                             <span id="modalJobType" class="modal-info-value"></span>
                         </div>
-                        <div class="modal-info-item">
+                        <div id="modalSalaryItem" class="modal-info-item">
                             <span class="modal-info-label">Salary Range</span>
                             <span id="modalSalary" class="modal-info-value"></span>
                         </div>
-                        <div class="modal-info-item">
+                        <div id="modalPlatformItem" class="modal-info-item">
                             <span class="modal-info-label">Platform / Channel</span>
                             <span id="modalPlatform" class="modal-info-value"></span>
                         </div>
                     </div>
+                    <!-- Job link & Map link inline with details -->
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                        <div id="modalLinkWrapper" style="display: none;">
+                            <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 7px 14px; font-size: 13px;">
+                                <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                                View Job Posting
+                            </a>
+                        </div>
+                        <div id="modalLocationLinkWrapper" style="display: none;">
+                            <a id="modalLocationLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 7px 14px; font-size: 13px;">
+                                📍 Open Location Map
+                            </a>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- 📅 Timeline Section -->
+                <!-- 🛠 Technical Skills (only when present) -->
+                <div id="modalSkillsWrapper" class="modal-section-group" style="display: none;">
+                    <span class="modal-section-title">🛠 Required Skills</span>
+                    <div id="modalSkills" class="modal-skills-list"></div>
+                </div>
+
+                <!-- 📅 Timeline — only show fields that have data -->
                 <div class="modal-section-group">
                     <span class="modal-section-title">📅 Timeline</span>
                     <div class="modal-grid">
-                        <div class="modal-info-item">
-                            <span class="modal-info-label">Date Found</span>
-                            <span id="modalDateFound" class="modal-info-value"></span>
-                        </div>
-                        <div class="modal-info-item">
+                        <div id="modalDateAppliedItem" class="modal-info-item">
                             <span class="modal-info-label">Date Applied</span>
                             <span id="modalDateApplied" class="modal-info-value"></span>
                         </div>
-                        <div class="modal-info-item">
-                            <span class="modal-info-label">Interview Date</span>
-                            <span id="modalInterviewDate" class="modal-info-value"></span>
+                        <div id="modalDateFoundItem" class="modal-info-item" style="display:none;">
+                            <span class="modal-info-label">Date Found</span>
+                            <span id="modalDateFound" class="modal-info-value"></span>
                         </div>
-                        <div class="modal-info-item">
-                            <span class="modal-info-label">Follow-up Date</span>
+                        <div id="modalFollowUpDateItem" class="modal-info-item" style="display:none;">
+                            <span class="modal-info-label">📌 Follow-up Date</span>
                             <span id="modalFollowUpDate" class="modal-info-value"></span>
                         </div>
                     </div>
                 </div>
 
-                <!-- 📝 Assessment Section (hidden when None) -->
+                <!-- 🎙 Interview Section (only shown when interview data exists) -->
+                <div id="modalInterviewSection" class="modal-section-group" style="display: none;">
+                    <div class="modal-assessment-card">
+                        <span class="modal-section-title">🎙 Interview</span>
+                        <div class="modal-grid">
+                            <div id="modalInterviewDateItem" class="modal-info-item" style="display:none;">
+                                <span class="modal-info-label">Interview Date</span>
+                                <span id="modalInterviewDate" class="modal-info-value"></span>
+                            </div>
+                            <div id="modalInterviewLocationItem" class="modal-info-item" style="display:none;">
+                                <span class="modal-info-label">Location / Platform</span>
+                                <span id="modalInterviewLocation" class="modal-info-value"></span>
+                            </div>
+                        </div>
+                        <!-- Interview map link -->
+                        <div id="modalInterviewLocationLinkWrapper" style="display:none; margin-top:10px;">
+                            <a id="modalInterviewLocationLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 7px 14px; font-size: 13px;">
+                                📍 Open in Maps
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 📝 Assessment Section (only shown when assessment data exists) -->
                 <div id="modalAssessmentSection" class="modal-section-group" style="display: none;">
                     <div class="modal-assessment-card">
                         <span class="modal-section-title">📝 Assessment</span>
                         <div class="modal-grid">
-                            <div class="modal-info-item">
+                            <div id="modalAssessmentStatusItem" class="modal-info-item" style="display:none;">
                                 <span class="modal-info-label">Status</span>
                                 <span id="modalAssessmentStatus" class="modal-assessment-badge"></span>
                             </div>
-                            <div class="modal-info-item">
+                            <div id="modalAssessmentTypeItem" class="modal-info-item" style="display:none;">
                                 <span class="modal-info-label">Type</span>
                                 <span id="modalAssessmentType" class="modal-info-value"></span>
                             </div>
-                            <div class="modal-info-item">
-                                <span class="modal-info-label">Deadline</span>
+                            <div id="modalAssessmentDeadlineItem" class="modal-info-item" style="display:none;">
+                                <span class="modal-info-label">Date</span>
                                 <span id="modalAssessmentDeadline" class="modal-info-value"></span>
                             </div>
-                            <div id="modalAssessmentLinkWrapper" class="modal-info-item" style="display: none;">
-                                <span class="modal-info-label">Assessment Link</span>
-                                <a id="modalAssessmentLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 6px 14px; font-size: 12px;">
-                                    <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 5px;">
-                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                        <polyline points="15 3 21 3 21 9"></polyline>
-                                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                                    </svg>
-                                    Open Assessment
-                                </a>
+                            <div id="modalAssessmentPlatformItem" class="modal-info-item" style="display:none;">
+                                <span class="modal-info-label">Platform</span>
+                                <span id="modalAssessmentPlatform" class="modal-info-value"></span>
                             </div>
                         </div>
-                        <div id="modalAssessmentNotesWrapper" class="modal-info-item" style="display: none; margin-top: 14px;">
-                            <span class="modal-info-label">Assessment Notes</span>
+                        <div id="modalAssessmentLinkWrapper" style="display: none; margin-top: 10px;">
+                            <a id="modalAssessmentLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 6px 14px; font-size: 12px;">
+                                <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 5px;">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                                Open Assessment
+                            </a>
+                        </div>
+                        <div id="modalAssessmentNotesWrapper" style="display: none; margin-top: 14px;">
+                            <span class="modal-info-label">Notes / Reminders</span>
                             <div id="modalAssessmentNotes" class="modal-assessment-notes"></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 🏆 Result (if available) -->
+                <!-- 🏆 Result (only shown when available) -->
                 <div id="modalResultWrapper" class="modal-section-group" style="display: none;">
-                    <span class="modal-section-title">🏆 Result</span>
-                    <div class="modal-info-item">
-                        <span id="modalResult" class="modal-info-value" style="font-weight: 700;"></span>
-                    </div>
+                    <span class="modal-section-title">🏆 Result / Outcome</span>
+                    <span id="modalResult" class="modal-info-value" style="font-weight: 700;"></span>
                 </div>
 
-                <!-- 🛠 Technical Skills -->
-                <div id="modalSkillsWrapper" class="modal-section-group" style="display: none;">
-                    <span class="modal-section-title">🛠 Technical Skills</span>
-                    <div id="modalSkills" class="modal-skills-list"></div>
+                <!-- 📝 Notes & Remarks -->
+                <div id="modalRemarkWrapper" class="modal-section-group" style="display:none;">
+                    <span class="modal-section-title">📝 Notes & Remarks</span>
+                    <div id="modalRemark" class="modal-remark-card"></div>
                 </div>
 
-                <!-- 🔗 Links & Notes -->
-                <div class="modal-section-group">
-                    <span class="modal-section-title">🔗 Links & Notes</span>
-                    <div id="modalLinkWrapper" class="modal-info-item" style="display: none;">
-                        <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 8px 16px; font-size: 13px;">
-                            <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                <polyline points="15 3 21 3 21 9"></polyline>
-                                <line x1="10" y1="14" x2="21" y2="3"></line>
-                            </svg>
-                            View Original Posting
-                        </a>
-                    </div>
-                    <div class="modal-info-item">
-                        <span class="modal-info-label">Notes & Remarks</span>
-                        <div id="modalRemark" class="modal-remark-card"></div>
-                    </div>
-                </div>
             </div>
 
             <div class="modal-footer">
@@ -1056,6 +1089,29 @@ foreach ($jobTypeData as $item) {
                 </button>
                 <a id="modalEditBtn" href="" class="btn">Edit Application</a>
                 <button id="modalCloseFooterBtn" class="btn secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteConfirmModal" style="
+        display:none; position:fixed; inset:0; z-index:9999;
+        background:rgba(0,0,0,0.55); backdrop-filter:blur(4px);
+        align-items:center; justify-content:center;
+    ">
+        <div style="
+            background:var(--card-bg, #fff); border-radius:16px;
+            padding:32px 28px; max-width:400px; width:90%;
+            box-shadow:0 20px 60px rgba(0,0,0,0.3);
+            text-align:center;
+        ">
+            <div style="font-size:2.5rem; margin-bottom:12px;">🗑️</div>
+            <h3 style="margin:0 0 8px; font-size:1.15rem; color:var(--text-primary,#1e293b);">Delete Application?</h3>
+            <p id="deleteConfirmMsg" style="margin:0 0 16px; color:var(--text-secondary,#64748b); font-size:.95rem; line-height:1.5;"></p>
+            <p style="margin:0 0 24px; font-size:.85rem; color:#ef4444; font-weight:600;">⚠️ This action cannot be undone.</p>
+            <div style="display:flex; gap:12px; justify-content:center;">
+                <button id="deleteCancelBtn" class="btn secondary" style="flex:1; max-width:160px; justify-content:center;">Cancel</button>
+                <button id="deleteConfirmBtn" class="btn" style="flex:1; max-width:160px; background:#ef4444; border-color:#ef4444; justify-content:center;">Yes, Delete</button>
             </div>
         </div>
     </div>
@@ -1562,67 +1618,138 @@ foreach ($jobTypeData as $item) {
             const dismissNotifBtn = document.getElementById('modalDismissNotifBtn');
 
             function showDetail(details, appId = null, notifType = null) {
-                // Set modal title & company safely using textContent
+                // Title & company
                 document.getElementById('modalJobTitle').textContent = details.job_title || 'N/A';
-                document.getElementById('modalCompany').textContent = details.company || 'N/A';
-                
+                document.getElementById('modalCompany').textContent  = details.company    || 'N/A';
+
                 // Status Badge
                 const statusBadge = document.getElementById('modalStatusBadge');
-                statusBadge.textContent = details.status || 'SAVED';
-                statusBadge.className = 'badge ' + (details.status ? details.status.toLowerCase().replace(/\s+/g, '-') : 'saved');
+                statusBadge.textContent = details.status || 'Unknown';
+                statusBadge.className   = 'badge ' + (details.status ? details.status.toLowerCase().replace(/\s+/g, '-') : 'unknown');
 
-                // Safe text field setter helper
-                const setField = (id, val) => {
-                    const el = document.getElementById(id);
+                // Helper: show a wrapper item only when val has content
+                const setOptional = (wrapperId, valueId, val, isText = true) => {
+                    const wrapper = document.getElementById(wrapperId);
+                    const el      = document.getElementById(valueId);
                     if (val && val.toString().trim() !== '') {
-                        el.textContent = val;
-                        el.classList.remove('empty');
+                        wrapper.style.display = '';
+                        if (isText) el.textContent = val;
+                        return true;
                     } else {
-                        el.textContent = 'Not specified';
-                        el.classList.add('empty');
+                        wrapper.style.display = 'none';
+                        return false;
                     }
                 };
 
-                setField('modalLocation', details.location);
-                setField('modalJobType', details.job_type);
-                setField('modalSalary', details.salary_range);
-                setField('modalPlatform', details.platform);
-                setField('modalDateFound', details.date_found);
-                setField('modalDateApplied', details.date_applied);
-                setField('modalInterviewDate', details.interview_date);
-                setField('modalFollowUpDate', details.follow_up_date);
+                // ── Job Details (hide individual items if empty) ──
+                setOptional('modalLocationItem',  'modalLocation',  details.location);
+                setOptional('modalJobTypeItem',   'modalJobType',   details.job_type);
+                setOptional('modalSalaryItem',    'modalSalary',    details.salary_range);
+                setOptional('modalPlatformItem',  'modalPlatform',  details.platform);
 
-                // Assessment Section (show only when not 'None')
+                // Job link
+                const linkWrapper = document.getElementById('modalLinkWrapper');
+                const jobLink     = document.getElementById('modalJobLink');
+                if (details.job_link && details.job_link.trim() !== '') {
+                    linkWrapper.style.display = '';
+                    jobLink.setAttribute('href', details.job_link);
+                } else {
+                    linkWrapper.style.display = 'none';
+                }
+
+                // Location map link
+                const locationLinkWrapper = document.getElementById('modalLocationLinkWrapper');
+                const locationLink        = document.getElementById('modalLocationLink');
+                if (details.location_link && details.location_link.trim() !== '') {
+                    locationLinkWrapper.style.display = '';
+                    locationLink.setAttribute('href', details.location_link);
+                } else {
+                    locationLinkWrapper.style.display = 'none';
+                }
+
+                // ── Technical Skills ──
+                const skillsContainer = document.getElementById('modalSkills');
+                skillsContainer.replaceChildren();
+                const skillsWrapper = document.getElementById('modalSkillsWrapper');
+                if (details.technical_skills && details.technical_skills.trim() !== '') {
+                    skillsWrapper.style.display = '';
+                    details.technical_skills.split(',').map(s => s.trim()).filter(Boolean).forEach(skill => {
+                        const tag = document.createElement('span');
+                        tag.className   = 'modal-skill-tag';
+                        tag.textContent = skill;
+                        skillsContainer.appendChild(tag);
+                    });
+                } else {
+                    skillsWrapper.style.display = 'none';
+                }
+
+                // ── Timeline (only show fields with data) ──
+                // Date Applied always shown
+                const daEl = document.getElementById('modalDateApplied');
+                daEl.textContent = details.date_applied || 'Not specified';
+                daEl.className   = details.date_applied ? 'modal-info-value' : 'modal-info-value empty';
+
+                setOptional('modalDateFoundItem',    'modalDateFound',    details.date_found);
+                setOptional('modalFollowUpDateItem', 'modalFollowUpDate', details.follow_up_date);
+
+                // ── Interview Section (show only when interview data exists) ──
+                const interviewSection  = document.getElementById('modalInterviewSection');
+                const hasInterview      = (details.interview_date && details.interview_date.trim()) ||
+                                          (details.interview_location && details.interview_location.trim());
+                if (hasInterview) {
+                    interviewSection.style.display = '';
+                    setOptional('modalInterviewDateItem',     'modalInterviewDate',     details.interview_date);
+                    setOptional('modalInterviewLocationItem', 'modalInterviewLocation', details.interview_location);
+
+                    // Interview location map link
+                    const iLocLinkWrapper = document.getElementById('modalInterviewLocationLinkWrapper');
+                    const iLocLink        = document.getElementById('modalInterviewLocationLink');
+                    if (details.interview_location_link && details.interview_location_link.trim() !== '') {
+                        iLocLinkWrapper.style.display = '';
+                        iLocLink.setAttribute('href', details.interview_location_link);
+                    } else {
+                        iLocLinkWrapper.style.display = 'none';
+                    }
+                } else {
+                    interviewSection.style.display = 'none';
+                }
+
+                // ── Assessment Section (show only when assessment data exists) ──
                 const assessmentSection = document.getElementById('modalAssessmentSection');
-                const aStatus = (details.assessment_status || 'None').trim();
-                
-                if (aStatus !== 'None' && aStatus !== '') {
+                const aStatus           = (details.assessment_status || 'None').trim();
+                const hasAssessment     = aStatus !== 'None' && aStatus !== '' ||
+                                          (details.assessment_type && details.assessment_type.trim()) ||
+                                          (details.assessment_deadline && details.assessment_deadline.trim());
+                if (hasAssessment) {
                     assessmentSection.style.display = '';
-                    
-                    // Status badge
-                    const statusBadgeEl = document.getElementById('modalAssessmentStatus');
-                    statusBadgeEl.textContent = aStatus;
-                    statusBadgeEl.className = 'modal-assessment-badge ' + aStatus.toLowerCase();
-                    
-                    // Type
-                    setField('modalAssessmentType', details.assessment_type);
-                    
-                    // Deadline
-                    setField('modalAssessmentDeadline', details.assessment_deadline);
-                    
-                    // Assessment Link
+
+                    // Assessment status badge
+                    if (aStatus && aStatus !== 'None') {
+                        const aBadge = document.getElementById('modalAssessmentStatus');
+                        aBadge.textContent = aStatus;
+                        aBadge.className   = 'modal-assessment-badge ' + aStatus.toLowerCase();
+                        document.getElementById('modalAssessmentStatusItem').style.display = '';
+                    } else {
+                        document.getElementById('modalAssessmentStatusItem').style.display = 'none';
+                    }
+
+                    setOptional('modalAssessmentTypeItem',     'modalAssessmentType',     details.assessment_type);
+                    setOptional('modalAssessmentDeadlineItem', 'modalAssessmentDeadline', details.assessment_deadline);
+                    setOptional('modalAssessmentPlatformItem', 'modalAssessmentPlatform', details.assessment_platform);
+
+                    // Assessment link button
                     const aLinkWrapper = document.getElementById('modalAssessmentLinkWrapper');
-                    const aLink = document.getElementById('modalAssessmentLink');
+                    const aLink        = document.getElementById('modalAssessmentLink');
                     if (details.assessment_link && details.assessment_link.trim() !== '') {
                         aLinkWrapper.style.display = '';
                         aLink.setAttribute('href', details.assessment_link);
                     } else {
                         aLinkWrapper.style.display = 'none';
                     }
-                    
-                    // Assessment Notes
+
+                    // Assessment notes
                     const aNotesWrapper = document.getElementById('modalAssessmentNotesWrapper');
-                    const aNotesEl = document.getElementById('modalAssessmentNotes');
+                    const aNotesEl      = document.getElementById('modalAssessmentNotes');
                     if (details.assessment_notes && details.assessment_notes.trim() !== '') {
                         aNotesWrapper.style.display = '';
                         aNotesEl.textContent = details.assessment_notes;
@@ -1633,7 +1760,7 @@ foreach ($jobTypeData as $item) {
                     assessmentSection.style.display = 'none';
                 }
 
-                // Result field (only if populated)
+                // ── Result ──
                 const resultWrapper = document.getElementById('modalResultWrapper');
                 if (details.result && details.result.trim() !== '') {
                     document.getElementById('modalResult').textContent = details.result;
@@ -1642,42 +1769,17 @@ foreach ($jobTypeData as $item) {
                     resultWrapper.style.display = 'none';
                 }
 
-                // Technical skills tags
-                const skillsContainer = document.getElementById('modalSkills');
-                skillsContainer.replaceChildren(); // Safe clean method
-                const skillsWrapper = document.getElementById('modalSkillsWrapper');
-                
-                if (details.technical_skills && details.technical_skills.trim() !== '') {
-                    skillsWrapper.style.display = '';
-                    const skills = details.technical_skills.split(',').map(s => s.trim()).filter(Boolean);
-                    skills.forEach(skill => {
-                        const tag = document.createElement('span');
-                        tag.className = 'modal-skill-tag';
-                        tag.textContent = skill;
-                        skillsContainer.appendChild(tag);
-                    });
-                } else {
-                    skillsWrapper.style.display = 'none';
-                }
-
-                // Job Link
-                const linkWrapper = document.getElementById('modalLinkWrapper');
-                const jobLink = document.getElementById('modalJobLink');
-                if (details.job_link && details.job_link.trim() !== '') {
-                    linkWrapper.style.display = '';
-                    jobLink.setAttribute('href', details.job_link);
-                } else {
-                    linkWrapper.style.display = 'none';
-                }
-
-                // Notes / Remark
+                // ── Notes / Remarks ──
+                const remarkWrapper   = document.getElementById('modalRemarkWrapper');
                 const remarkContainer = document.getElementById('modalRemark');
                 if (details.remark && details.remark.trim() !== '') {
-                    remarkContainer.textContent = details.remark;
+                    remarkWrapper.style.display   = '';
+                    remarkContainer.textContent   = details.remark;
                     remarkContainer.classList.remove('empty');
                     remarkContainer.style.display = '';
                 } else {
-                    remarkContainer.textContent = 'No additional notes added.';
+                    remarkWrapper.style.display = 'none';
+                    remarkContainer.textContent = '';
                     remarkContainer.classList.add('empty');
                 }
 
@@ -1764,6 +1866,29 @@ foreach ($jobTypeData as $item) {
                 }
             });
 
+            // ── Delete confirmation modal ──
+            const deleteModal    = document.getElementById('deleteConfirmModal');
+            const deleteMsg      = document.getElementById('deleteConfirmMsg');
+            const deleteCancelBtn= document.getElementById('deleteCancelBtn');
+            const deleteConfirmBtn= document.getElementById('deleteConfirmBtn');
+            let pendingDeleteUrl = null;
+
+            function showDeleteConfirm(href, company) {
+                pendingDeleteUrl = href;
+                deleteMsg.textContent = 'You are about to permanently delete the application for "' + company + '". Are you sure?';
+                deleteModal.style.display = 'flex';
+            }
+            function hideDeleteConfirm() {
+                deleteModal.style.display = 'none';
+                pendingDeleteUrl = null;
+            }
+
+            deleteCancelBtn.addEventListener('click', hideDeleteConfirm);
+            deleteModal.addEventListener('click', (e) => { if (e.target === deleteModal) hideDeleteConfirm(); });
+            deleteConfirmBtn.addEventListener('click', () => {
+                if (pendingDeleteUrl) window.location.href = pendingDeleteUrl;
+            });
+
             // Intercept Edit and Delete link clicks to append the current page/filter state
             document.addEventListener('click', (e) => {
                 const editLink = e.target.closest('.action-links a.edit');
@@ -1774,14 +1899,14 @@ foreach ($jobTypeData as $item) {
                     window.location.href = href + '&back=' + encodeURIComponent(currentUrl);
                 }
 
-                const deleteLink = e.target.closest('.action-links a.delete');
+                // All delete buttons (table rows + any .action-links.delete)
+                const deleteLink = e.target.closest('.confirm-delete, .action-links a.delete');
                 if (deleteLink) {
                     e.preventDefault();
-                    if (confirm('Delete this application?')) {
-                        const currentUrl = window.location.pathname + window.location.search;
-                        const href = deleteLink.getAttribute('href');
-                        window.location.href = href + '&back=' + encodeURIComponent(currentUrl);
-                    }
+                    const company = deleteLink.dataset.company || 'this application';
+                    const currentUrl = window.location.pathname + window.location.search;
+                    const href = deleteLink.getAttribute('href') + '&back=' + encodeURIComponent(currentUrl);
+                    showDeleteConfirm(href, company);
                 }
             });
 

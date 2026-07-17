@@ -42,6 +42,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $assessment_deadline = trim($_POST['assessment_deadline'] ?? '');
     $assessment_link = trim($_POST['assessment_link'] ?? '');
     $assessment_notes = trim($_POST['assessment_notes'] ?? '');
+    $interview_location = trim($_POST['interview_location'] ?? '');
+    $assessment_platform = trim($_POST['assessment_platform'] ?? '');
+    $location_link = trim($_POST['location_link'] ?? '');
+    $interview_location_link = trim($_POST['interview_location_link'] ?? '');
 
     // Auto-promote assessment_status to 'Pending' if a deadline is set but status was left as 'None'
     if (!empty($assessment_deadline) && $assessment_status === 'None') {
@@ -54,8 +58,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         $stmt = $pdo->prepare("
             INSERT INTO applications 
-            (company, job_title, date_found, date_applied, status, platform, job_type, location, salary_range, job_link, remark, follow_up_date, interview_date, result, technical_skills, assessment_status, assessment_type, assessment_deadline, assessment_link, assessment_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (company, job_title, date_found, date_applied, status, platform, job_type, location, salary_range, job_link, remark, follow_up_date, interview_date, result, technical_skills, assessment_status, assessment_type, assessment_deadline, assessment_link, assessment_notes, interview_location, assessment_platform, location_link, interview_location_link)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
@@ -78,7 +82,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $assessment_type ?: null,
             $assessment_deadline ?: null,
             $assessment_link ?: null,
-            $assessment_notes ?: null
+            $assessment_notes ?: null,
+            $interview_location ?: null,
+            $assessment_platform ?: null,
+            $location_link ?: null,
+            $interview_location_link ?: null
         ]);
 
         $appId = $pdo->lastInsertId();
@@ -269,6 +277,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         </div>
 
                         <div class="form-group">
+                            <label>Location Map Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
+                            <input type="url" name="location_link" placeholder="https://maps.google.com/...">
+                        </div>
+
+                        <div class="form-group">
                             <label>Salary Range</label>
                             <input type="text" name="salary_range" placeholder="e.g. RM 5,000 – RM 7,000">
                         </div>
@@ -294,11 +307,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <div class="form-group">
                             <label>Application Status</label>
-                            <select name="status">
-                                <option>Saved</option>
-                                <option>Pending</option>
+                            <select name="status" id="app_status" onchange="toggleStatusFields()">
                                 <option selected>Applied</option>
-                                <option>Responded</option>
+                                <option>Pending</option>
+                                <option>Viewed Application</option>
                                 <option>Interview</option>
                                 <option>Assessment</option>
                                 <option>Rejected</option>
@@ -306,6 +318,73 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 <option>Expired</option>
                                 <option>Unlikely to Progress Further</option>
                             </select>
+                        </div>
+
+                        <!-- ── Interview Fields (shown when status = Interview) ── -->
+                        <div id="interview_fields" style="display:none; contents">
+                            <div class="form-group">
+                                <label>Interview Date</label>
+                                <input type="date" name="interview_date" id="interview_date">
+                            </div>
+                            <div class="form-group">
+                                <label>Interview Location</label>
+                                <input type="text" name="interview_location" id="interview_location" placeholder="e.g. Zoom, Google Meet, Kuala Lumpur Office">
+                            </div>
+                            <div class="form-group">
+                                <label>Interview Location Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
+                                <input type="url" name="interview_location_link" id="interview_location_link" placeholder="https://maps.google.com/...">
+                            </div>
+                        </div><!-- /#interview_fields -->
+
+                        <!-- ── Assessment Fields (shown when status = Assessment) ── -->
+                        <div id="assessment_status_fields" style="display:none; contents">
+                            <div class="form-group">
+                                <label>Assessment Type</label>
+                                <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
+                                    <option value="" disabled selected>Select assessment type</option>
+                                    <option value="Behavioral Assessment">Behavioral Assessment</option>
+                                    <option value="Technical / Coding Test">Technical / Coding Test</option>
+                                    <option value="Cognitive / Aptitude Test">Cognitive / Aptitude Test</option>
+                                    <option value="Take-home Assignment">Take-home Assignment</option>
+                                    <option value="English / Communication Test">English / Communication Test</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment Date</label>
+                                <input type="date" name="assessment_deadline" id="assessment_deadline">
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment Status</label>
+                                <select name="assessment_status" id="assessment_status">
+                                    <option value="None" selected>None</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Completed">Completed</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment Platform</label>
+                                <input type="text" name="assessment_platform" id="assessment_platform" placeholder="e.g. HackerRank, Codility, Custom Portal">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Assessment Link</label>
+                                <input type="url" name="assessment_link" id="assessment_link" placeholder="https://...">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Assessment Notes / Reminders</label>
+                                <textarea name="assessment_notes" id="assessment_notes" placeholder="e.g. Needs to be completed in one sitting, study company values..."></textarea>
+                            </div>
+                            
+                            <!-- Preparation Suggestions Box -->
+                            <div class="assessment-suggestions-container full-width" id="assessment_suggestions_box" style="grid-column: 1 / -1;">
+                                <div class="suggestions-card">
+                                    <div class="suggestions-header">
+                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions &amp; Tips</h3>
+                                    </div>
+                                    <div class="suggestions-body" id="assessment_suggestions_body">
+                                        <!-- Tips injected dynamically via JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -319,18 +398,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         </div>
 
                         <div class="form-group">
-                            <label>Interview Date</label>
-                            <input type="date" name="interview_date">
-                        </div>
-
-                        <div class="form-group">
                             <label>Follow-up Date</label>
                             <input type="date" name="follow_up_date">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Result / Outcome</label>
-                            <input type="text" name="result" placeholder="e.g. Passed, Pending, Shortlisted">
                         </div>
 
                         <div class="form-group full-width">
@@ -338,64 +407,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <textarea name="remark" placeholder="Example: HR contacted regarding portfolio, follow up on Friday..."></textarea>
                         </div>
 
-                        <!-- ── Section 3: Assessment Details ── -->
-                        <div class="form-section-header">
-                            <span class="form-section-number">3</span>
-                            <div>
-                                <div class="form-section-title">Assessment</div>
-                                <div class="form-section-subtitle">Track any online tests or assessments</div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Assessment Status</label>
-                            <select name="assessment_status" id="assessment_status" onchange="toggleAssessmentFields()">
-                                <option value="None" selected>None</option>
-                                <option value="Pending">Pending</option>
-                                <option value="Completed">Completed</option>
-                            </select>
-                        </div>
-
-                        <div id="assessment_extra_fields" style="display: none;">
-                            <div class="form-group">
-                                <label>Assessment Type</label>
-                                <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
-                                    <option value="" disabled selected>Select assessment type</option>
-                                    <option value="Behavioral Assessment">Behavioral Assessment</option>
-                                    <option value="Technical / Coding Test">Technical / Coding Test</option>
-                                    <option value="Cognitive / Aptitude Test">Cognitive / Aptitude Test</option>
-                                    <option value="Take-home Assignment">Take-home Assignment</option>
-                                    <option value="English / Communication Test">English / Communication Test</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Assessment Deadline</label>
-                                <input type="date" name="assessment_deadline" id="assessment_deadline">
-                            </div>
-
-                            <div class="form-group">
-                                <label>Assessment Link</label>
-                                <input type="url" name="assessment_link" id="assessment_link" placeholder="https://...">
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label>Assessment Notes / Reminders</label>
-                                <textarea name="assessment_notes" id="assessment_notes" placeholder="e.g. Needs to be completed in one sitting, study company values..."></textarea>
-                            </div>
-
-                            <!-- Preparation Suggestions Box -->
-                            <div class="assessment-suggestions-container" id="assessment_suggestions_box">
-                                <div class="suggestions-card">
-                                    <div class="suggestions-header">
-                                        <h3 id="assessment_suggestions_title">💡 Preparation Suggestions &amp; Tips</h3>
-                                    </div>
-                                    <div class="suggestions-body" id="assessment_suggestions_body">
-                                        <!-- Tips injected dynamically via JavaScript -->
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
                     </div>
 
@@ -425,36 +436,43 @@ function togglePlatformOther(select) {
     }
 }
 
-// Toggle assessment fields visibility based on status
-function toggleAssessmentFields() {
-    const status = document.getElementById('assessment_status').value;
-    const extraFields = document.getElementById('assessment_extra_fields');
-    const typeSelect = document.getElementById('assessment_type');
-    
-    if (status !== 'None') {
-        extraFields.style.display = 'contents'; // Fits inside CSS Grid
+// Show/hide Interview or Assessment fields based on main status dropdown
+function toggleStatusFields() {
+    const status = document.getElementById('app_status').value;
+    const interviewFields  = document.getElementById('interview_fields');
+    const assessmentFields = document.getElementById('assessment_status_fields');
+
+    if (status === 'Interview') {
+        // Interview: show interview fields + assessment (assessment can happen during interview)
+        interviewFields.style.display  = 'contents';
+        assessmentFields.style.display = 'contents';
+        toggleAssessmentSuggestions();
+    } else if (status === 'Assessment') {
+        interviewFields.style.display  = 'none';
+        assessmentFields.style.display = 'contents';
         toggleAssessmentSuggestions();
     } else {
-        extraFields.style.display = 'none';
-        document.getElementById('assessment_suggestions_box').classList.remove('active');
+        interviewFields.style.display  = 'none';
+        assessmentFields.style.display = 'none';
     }
 }
 
-// Show dynamic tips based on type
+// Show dynamic tips based on assessment type
 function toggleAssessmentSuggestions() {
     const type = document.getElementById('assessment_type').value;
     const container = document.getElementById('assessment_suggestions_box');
+    if (!container) return;
     const tipsBody = document.getElementById('assessment_suggestions_body');
     const tipsTitle = document.getElementById('assessment_suggestions_title');
-    
-    if (!type || document.getElementById('assessment_status').value === 'None') {
+
+    if (!type) {
         container.classList.remove('active');
         return;
     }
-    
+
     let titleText = '';
     let tipsHTML = '';
-    
+
     switch (type) {
         case 'Behavioral Assessment':
             titleText = '💡 Behavioral Assessment Preparation Tips';
@@ -515,10 +533,14 @@ function toggleAssessmentSuggestions() {
             container.classList.remove('active');
             return;
     }
-    
+
     tipsTitle.textContent = titleText;
     tipsBody.innerHTML = tipsHTML;
     container.classList.add('active');
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    toggleStatusFields();
+});
 </script>
 </html>

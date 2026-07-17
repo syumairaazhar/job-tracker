@@ -88,7 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $interviews = $interviewsStmt->fetchAll(PDO::FETCH_ASSOC);
 
             // 2. Follow-ups (Today & Tomorrow)
-            $followupsStmt = $pdo->prepare("SELECT company, job_title, follow_up_date FROM applications WHERE (follow_up_date = ? OR follow_up_date = ?) AND (status = 'Applied' OR status = 'Responded')");
+            $followupsStmt = $pdo->prepare("SELECT company, job_title, follow_up_date FROM applications WHERE (follow_up_date = ? OR follow_up_date = ?) AND status IN ('Applied', 'Pending', 'Viewed Application', 'Interview', 'Assessment')");
             $followupsStmt->execute([$todayStr, $tomorrowStr]);
             $followups = $followupsStmt->fetchAll(PDO::FETCH_ASSOC);
 

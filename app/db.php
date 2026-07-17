@@ -38,7 +38,11 @@ CREATE TABLE IF NOT EXISTS applications (
         "assessment_type TEXT",
         "assessment_deadline TEXT",
         "assessment_link TEXT",
-        "assessment_notes TEXT"
+        "assessment_notes TEXT",
+        "interview_location TEXT",
+        "assessment_platform TEXT",
+        "location_link TEXT",
+        "interview_location_link TEXT"
     ];
 
     foreach ($columns as $column) {
