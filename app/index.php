@@ -697,7 +697,7 @@ foreach ($jobTypeData as $item) {
                     <div class="dashboard-chart-row">
                         <div class="chart-box">
                             <h2>Status Overview</h2>
-                            <div style="position: relative; width: 100%; max-width: 320px; aspect-ratio: 1;">
+                            <div style="position: relative; width: 100%; max-width: 600px;">
                                 <canvas id="quickStatusChart"></canvas>
                             </div>
                         </div>
@@ -919,172 +919,178 @@ foreach ($jobTypeData as $item) {
     <!-- Premium Job Details Modal -->
     <div id="detailsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalJobTitle">
         <div class="modal-container">
-            <div class="modal-header">
-                <div class="modal-title-area">
-                    <h3 id="modalJobTitle" class="modal-title"></h3>
-                    <div id="modalCompany" class="modal-subtitle"></div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 12px;">
+            
+            <!-- Hero Header -->
+            <div id="modalHeaderBanner" class="modal-header-banner">
+                <div class="modal-header-actions">
                     <span id="modalStatusBadge" class="badge"></span>
                     <button class="modal-close-btn" id="modalCloseBtn" aria-label="Close modal">
-                        <svg viewBox="0 0 24 24">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
+                        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
+                </div>
+                <div class="modal-hero-content">
+                    <div id="modalCompanyAvatar" class="modal-company-avatar"></div>
+                    <div class="modal-title-area">
+                        <h3 id="modalJobTitle" class="modal-title"></h3>
+                        <div id="modalCompany" class="modal-subtitle"></div>
+                    </div>
                 </div>
             </div>
 
             <div class="modal-content">
 
-                <!-- 📋 Job Details — always visible, empty fields hidden -->
-                <div class="modal-section-group">
-                    <span class="modal-section-title">📋 Job Details</span>
-                    <div class="modal-grid">
-                        <div id="modalLocationItem" class="modal-info-item">
-                            <span class="modal-info-label">Location</span>
-                            <span id="modalLocation" class="modal-info-value"></span>
-                        </div>
-                        <div id="modalJobTypeItem" class="modal-info-item">
-                            <span class="modal-info-label">Job Type</span>
-                            <span id="modalJobType" class="modal-info-value"></span>
-                        </div>
-                        <div id="modalSalaryItem" class="modal-info-item">
-                            <span class="modal-info-label">Salary Range</span>
-                            <span id="modalSalary" class="modal-info-value"></span>
-                        </div>
-                        <div id="modalPlatformItem" class="modal-info-item">
-                            <span class="modal-info-label">Platform / Channel</span>
-                            <span id="modalPlatform" class="modal-info-value"></span>
-                        </div>
+                <!-- Scrollable Quick Info Pills -->
+                <div class="modal-pills-container">
+                    <div id="modalLocationPill" class="modal-pill" style="display:none;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <span id="modalLocation"></span>
                     </div>
-                    <!-- Job link & Map link inline with details -->
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
-                        <div id="modalLinkWrapper" style="display: none;">
-                            <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 7px 14px; font-size: 13px;">
-                                <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
-                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                    <polyline points="15 3 21 3 21 9"></polyline>
-                                    <line x1="10" y1="14" x2="21" y2="3"></line>
-                                </svg>
-                                View Job Posting
-                            </a>
-                        </div>
-                        <div id="modalLocationLinkWrapper" style="display: none;">
-                            <a id="modalLocationLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 7px 14px; font-size: 13px;">
-                                📍 Open Location Map
-                            </a>
-                        </div>
+                    <div id="modalJobTypePill" class="modal-pill" style="display:none;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                        <span id="modalJobType"></span>
+                    </div>
+                    <div id="modalSalaryPill" class="modal-pill" style="display:none;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        <span id="modalSalary"></span>
+                    </div>
+                    <div id="modalPlatformPill" class="modal-pill" style="display:none;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                        <span id="modalPlatform"></span>
                     </div>
                 </div>
 
-                <!-- 🛠 Technical Skills (only when present) -->
+                <div class="modal-action-links">
+                    <div id="modalLinkWrapper" style="display: none;">
+                        <a id="modalJobLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            View Job Posting
+                        </a>
+                    </div>
+                    <div id="modalLocationLinkWrapper" style="display: none;">
+                        <a id="modalLocationLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                            Open Map
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 🛠 Technical Skills -->
                 <div id="modalSkillsWrapper" class="modal-section-group" style="display: none;">
-                    <span class="modal-section-title">🛠 Required Skills</span>
+                    <span class="modal-section-title">Required Skills</span>
                     <div id="modalSkills" class="modal-skills-list"></div>
                 </div>
 
-                <!-- 📅 Timeline — only show fields that have data -->
+                <!-- 📅 Visual Timeline -->
                 <div class="modal-section-group">
-                    <span class="modal-section-title">📅 Timeline</span>
-                    <div class="modal-grid">
-                        <div id="modalDateAppliedItem" class="modal-info-item">
-                            <span class="modal-info-label">Date Applied</span>
-                            <span id="modalDateApplied" class="modal-info-value"></span>
+                    <span class="modal-section-title">Timeline</span>
+                    <div class="visual-timeline">
+                        <div id="modalDateFoundNode" class="timeline-node" style="display:none;">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <span class="timeline-label">Date Found</span>
+                                <span id="modalDateFound" class="timeline-value"></span>
+                            </div>
                         </div>
-                        <div id="modalDateFoundItem" class="modal-info-item" style="display:none;">
-                            <span class="modal-info-label">Date Found</span>
-                            <span id="modalDateFound" class="modal-info-value"></span>
+                        <div id="modalDateAppliedNode" class="timeline-node">
+                            <div class="timeline-dot active"></div>
+                            <div class="timeline-content">
+                                <span class="timeline-label">Date Applied</span>
+                                <span id="modalDateApplied" class="timeline-value"></span>
+                            </div>
                         </div>
-                        <div id="modalFollowUpDateItem" class="modal-info-item" style="display:none;">
-                            <span class="modal-info-label">📌 Follow-up Date</span>
-                            <span id="modalFollowUpDate" class="modal-info-value"></span>
+                        <div id="modalFollowUpDateNode" class="timeline-node" style="display:none;">
+                            <div class="timeline-dot warning"></div>
+                            <div class="timeline-content">
+                                <span class="timeline-label">Follow-up Date</span>
+                                <span id="modalFollowUpDate" class="timeline-value"></span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 🎙 Interview Section (only shown when interview data exists) -->
+                <!-- 🎙 Interview Ticket -->
                 <div id="modalInterviewSection" class="modal-section-group" style="display: none;">
-                    <div class="modal-assessment-card">
-                        <span class="modal-section-title">🎙 Interview</span>
-                        <div class="modal-grid">
-                            <div id="modalInterviewDateItem" class="modal-info-item" style="display:none;">
-                                <span class="modal-info-label">Interview Date</span>
-                                <span id="modalInterviewDate" class="modal-info-value"></span>
-                            </div>
-                            <div id="modalInterviewLocationItem" class="modal-info-item" style="display:none;">
-                                <span class="modal-info-label">Location / Platform</span>
-                                <span id="modalInterviewLocation" class="modal-info-value"></span>
-                            </div>
+                    <span class="modal-section-title">Interview</span>
+                    <div class="modal-ticket interview">
+                        <div class="ticket-icon">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
                         </div>
-                        <!-- Interview map link -->
-                        <div id="modalInterviewLocationLinkWrapper" style="display:none; margin-top:10px;">
-                            <a id="modalInterviewLocationLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 7px 14px; font-size: 13px;">
-                                📍 Open in Maps
-                            </a>
+                        <div class="ticket-details">
+                            <div id="modalInterviewDateItem" style="display:none;">
+                                <span class="ticket-label">Interview Date</span>
+                                <span id="modalInterviewDate" class="ticket-value"></span>
+                            </div>
+                            <div id="modalInterviewLocationItem" style="display:none;">
+                                <span class="ticket-label">Location / Platform</span>
+                                <span id="modalInterviewLocation" class="ticket-value"></span>
+                            </div>
+                            <div id="modalInterviewLocationLinkWrapper" style="display:none; margin-top:8px;">
+                                <a id="modalInterviewLocationLink" href="" target="_blank" rel="noopener noreferrer" class="ticket-btn">
+                                    📍 Open in Maps
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 📝 Assessment Section (only shown when assessment data exists) -->
+                <!-- 📝 Assessment Ticket -->
                 <div id="modalAssessmentSection" class="modal-section-group" style="display: none;">
-                    <div class="modal-assessment-card">
-                        <span class="modal-section-title">📝 Assessment</span>
-                        <div class="modal-grid">
-                            <div id="modalAssessmentStatusItem" class="modal-info-item" style="display:none;">
-                                <span class="modal-info-label">Status</span>
+                    <span class="modal-section-title">Assessment</span>
+                    <div class="modal-ticket assessment">
+                        <div class="ticket-icon">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        </div>
+                        <div class="ticket-details">
+                            <div id="modalAssessmentStatusItem" style="display:none;">
+                                <span class="ticket-label">Status</span>
                                 <span id="modalAssessmentStatus" class="modal-assessment-badge"></span>
                             </div>
-                            <div id="modalAssessmentTypeItem" class="modal-info-item" style="display:none;">
-                                <span class="modal-info-label">Type</span>
-                                <span id="modalAssessmentType" class="modal-info-value"></span>
+                            <div id="modalAssessmentTypeItem" style="display:none;">
+                                <span class="ticket-label">Type</span>
+                                <span id="modalAssessmentType" class="ticket-value"></span>
                             </div>
-                            <div id="modalAssessmentDeadlineItem" class="modal-info-item" style="display:none;">
-                                <span class="modal-info-label">Date</span>
-                                <span id="modalAssessmentDeadline" class="modal-info-value"></span>
+                            <div id="modalAssessmentDeadlineItem" style="display:none;">
+                                <span class="ticket-label">Date / Deadline</span>
+                                <span id="modalAssessmentDeadline" class="ticket-value"></span>
                             </div>
-                            <div id="modalAssessmentPlatformItem" class="modal-info-item" style="display:none;">
-                                <span class="modal-info-label">Platform</span>
-                                <span id="modalAssessmentPlatform" class="modal-info-value"></span>
+                            <div id="modalAssessmentPlatformItem" style="display:none;">
+                                <span class="ticket-label">Platform</span>
+                                <span id="modalAssessmentPlatform" class="ticket-value"></span>
+                            </div>
+                            
+                            <div id="modalAssessmentLinkWrapper" style="display: none; margin-top: 8px;">
+                                <a id="modalAssessmentLink" href="" target="_blank" rel="noopener noreferrer" class="ticket-btn">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                    Open Assessment
+                                </a>
                             </div>
                         </div>
-                        <div id="modalAssessmentLinkWrapper" style="display: none; margin-top: 10px;">
-                            <a id="modalAssessmentLink" href="" target="_blank" rel="noopener noreferrer" class="btn secondary" style="width: fit-content; padding: 6px 14px; font-size: 12px;">
-                                <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 5px;">
-                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                    <polyline points="15 3 21 3 21 9"></polyline>
-                                    <line x1="10" y1="14" x2="21" y2="3"></line>
-                                </svg>
-                                Open Assessment
-                            </a>
-                        </div>
-                        <div id="modalAssessmentNotesWrapper" style="display: none; margin-top: 14px;">
-                            <span class="modal-info-label">Notes / Reminders</span>
-                            <div id="modalAssessmentNotes" class="modal-assessment-notes"></div>
-                        </div>
+                    </div>
+                    
+                    <!-- Assessment Notes -->
+                    <div id="modalAssessmentNotesWrapper" style="display: none; margin-top: 14px;">
+                        <span class="modal-info-label">Notes / Reminders</span>
+                        <div id="modalAssessmentNotes" class="modal-assessment-notes"></div>
                     </div>
                 </div>
 
-                <!-- 🏆 Result (only shown when available) -->
+                <!-- 🏆 Result -->
                 <div id="modalResultWrapper" class="modal-section-group" style="display: none;">
-                    <span class="modal-section-title">🏆 Result / Outcome</span>
+                    <span class="modal-section-title">Result / Outcome</span>
                     <span id="modalResult" class="modal-info-value" style="font-weight: 700;"></span>
                 </div>
 
                 <!-- 📝 Notes & Remarks -->
                 <div id="modalRemarkWrapper" class="modal-section-group" style="display:none;">
-                    <span class="modal-section-title">📝 Notes & Remarks</span>
+                    <span class="modal-section-title">Notes & Remarks</span>
                     <div id="modalRemark" class="modal-remark-card"></div>
                 </div>
 
             </div>
 
-            <div class="modal-footer">
+            <!-- Sticky Bottom Action Bar -->
+            <div class="modal-footer sticky-action-bar">
                 <button id="modalDismissNotifBtn" class="btn warning" style="display: none;">
-                    <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; display: inline-block; vertical-align: middle; margin-right: 6px;">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
                     Dismiss Notification
                 </button>
                 <a id="modalEditBtn" href="" class="btn">Edit Application</a>
@@ -1168,13 +1174,14 @@ foreach ($jobTypeData as $item) {
                     datasets: [{
                         data: statusCounts,
                         backgroundColor: mapColors(statusLabels),
-                        borderWidth: 2,
-                        borderColor: '#ffffff'
+                        borderColor: '#ffffff',
+                        borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    cutout: '65%',
                     onClick: (evt, elements) => {
                         if (elements.length > 0) {
                             const index = elements[0].index;
@@ -1183,16 +1190,36 @@ foreach ($jobTypeData as $item) {
                         }
                     },
                     plugins: {
-                        legend: {
+                        legend: { 
+                            display: true, 
                             position: 'bottom',
                             labels: {
-                                color: chartColors.text,
-                                font: { family: 'Outfit', size: 12 }
+                                padding: 12,
+                                usePointStyle: true,
+                                font: { family: 'Outfit', size: 11 }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            titleFont: { family: 'Outfit', weight: '600' },
+                            bodyFont: { family: 'Outfit' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: (ctx) => ' ' + ctx.raw + ' application' + (ctx.raw !== 1 ? 's' : '')
                             }
                         }
                     }
                 }
             });
+
+            // Set fixed height for the canvas wrapper for Polar Area
+            const chartEl = document.getElementById('quickStatusChart');
+            if (chartEl) {
+                chartEl.parentElement.style.height = '280px';
+                chartEl.parentElement.style.maxWidth = '320px';
+                chartEl.parentElement.style.margin = '0 auto';
+            }
         <?php endif; ?>
 
         <?php if ($view === 'analytics'): ?>
@@ -1621,11 +1648,32 @@ foreach ($jobTypeData as $item) {
                 // Title & company
                 document.getElementById('modalJobTitle').textContent = details.job_title || 'N/A';
                 document.getElementById('modalCompany').textContent  = details.company    || 'N/A';
+                
+                // Avatar
+                const avatar = document.getElementById('modalCompanyAvatar');
+                if (avatar) {
+                    const c = details.company ? details.company.charAt(0).toUpperCase() : '?';
+                    avatar.textContent = c;
+                    // Simple hash for color
+                    let hash = 0;
+                    for (let i = 0; i < (details.company || 'A').length; i++) {
+                        hash = (details.company || 'A').charCodeAt(i) + ((hash << 5) - hash);
+                    }
+                    const hue = Math.abs(hash % 360);
+                    avatar.style.background = `hsl(${hue}, 70%, 50%)`;
+                }
 
                 // Status Badge
                 const statusBadge = document.getElementById('modalStatusBadge');
+                const headerBanner = document.getElementById('modalHeaderBanner');
+                const statusClass = details.status ? details.status.toLowerCase().replace(/\s+/g, '-') : 'unknown';
+                
                 statusBadge.textContent = details.status || 'Unknown';
-                statusBadge.className   = 'badge ' + (details.status ? details.status.toLowerCase().replace(/\s+/g, '-') : 'unknown');
+                statusBadge.className   = 'badge ' + statusClass;
+                
+                if (headerBanner) {
+                    headerBanner.className = 'modal-header-banner status-' + statusClass;
+                }
 
                 // Helper: show a wrapper item only when val has content
                 const setOptional = (wrapperId, valueId, val, isText = true) => {
@@ -1642,10 +1690,10 @@ foreach ($jobTypeData as $item) {
                 };
 
                 // ── Job Details (hide individual items if empty) ──
-                setOptional('modalLocationItem',  'modalLocation',  details.location);
-                setOptional('modalJobTypeItem',   'modalJobType',   details.job_type);
-                setOptional('modalSalaryItem',    'modalSalary',    details.salary_range);
-                setOptional('modalPlatformItem',  'modalPlatform',  details.platform);
+                setOptional('modalLocationPill',  'modalLocation',  details.location);
+                setOptional('modalJobTypePill',   'modalJobType',   details.job_type);
+                setOptional('modalSalaryPill',    'modalSalary',    details.salary_range);
+                setOptional('modalPlatformPill',  'modalPlatform',  details.platform);
 
                 // Job link
                 const linkWrapper = document.getElementById('modalLinkWrapper');
@@ -1689,8 +1737,8 @@ foreach ($jobTypeData as $item) {
                 daEl.textContent = details.date_applied || 'Not specified';
                 daEl.className   = details.date_applied ? 'modal-info-value' : 'modal-info-value empty';
 
-                setOptional('modalDateFoundItem',    'modalDateFound',    details.date_found);
-                setOptional('modalFollowUpDateItem', 'modalFollowUpDate', details.follow_up_date);
+                setOptional('modalDateFoundNode',    'modalDateFound',    details.date_found);
+                setOptional('modalFollowUpDateNode', 'modalFollowUpDate', details.follow_up_date);
 
                 // ── Interview Section (show only when interview data exists) ──
                 const interviewSection  = document.getElementById('modalInterviewSection');
