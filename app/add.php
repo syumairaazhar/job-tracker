@@ -101,13 +101,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'assessment_type' => $assessment_type,
             'assessment_deadline' => $assessment_deadline,
             'assessment_link' => $assessment_link,
-            'assessment_notes' => $assessment_notes
+            'assessment_notes' => $assessment_notes,
+            'job_link' => $job_link
         ];
         notifyApplicationChange($pdo, $newAppData, 'create');
 
         $_SESSION['notification'] = [
             'type' => 'success',
-            'message' => 'Job application for <strong>' . htmlspecialchars($company) . '</strong> successfully tracked!'
+            'message' => 'Job application for <strong>' . htmlspecialchars($company) . '</strong> Successfully tracked!'
         ];
 
         header("Location: index.php?view=applications");

@@ -168,9 +168,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'assessment_type' => $assessment_type,
             'assessment_deadline' => $assessment_deadline,
             'assessment_link' => $assessment_link,
-            'assessment_notes' => $assessment_notes
+            'assessment_notes' => $assessment_notes,
+            'job_link' => $job_link
         ];
-        notifyApplicationChange($pdo, $updatedAppData, 'update');
+        notifyApplicationChange($pdo, $updatedAppData, 'update', $app);
 
         $msg = 'Application for <strong>' . htmlspecialchars($company) . '</strong> updated successfully!';
         if ($status === 'Interview' && !empty($interview_date)) {

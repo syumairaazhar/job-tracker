@@ -50,20 +50,38 @@ function sendTelegramMessage($token, $chatId, $message) {
         'parse_mode' => 'HTML'
     ];
 
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-            'method'  => 'POST',
-            'content' => http_build_query($data),
-            'timeout' => 8
-        ]
-    ];
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        
+        $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($result === false || $httpCode >= 400) {
+            return false;
+        }
+    } else {
+        $options = [
+            'http' => [
+                'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+                'method'  => 'POST',
+                'content' => http_build_query($data),
+                'timeout' => 15
+            ]
+        ];
 
-    $context  = stream_context_create($options);
-    $result = @file_get_contents($url, false, $context);
-    
-    if ($result === false) {
-        return false;
+        $context  = stream_context_create($options);
+        $result = @file_get_contents($url, false, $context);
+        
+        if ($result === false) {
+            return false;
+        }
     }
     
     $response = json_decode($result, true);
@@ -76,8 +94,9 @@ function sendTelegramMessage($token, $chatId, $message) {
  * @param PDO $pdo
  * @param array $appData
  * @param string $changeType 'create' or 'update'
+ * @param array|null $oldAppData Optional previous application data to prevent duplicate update notifications
  */
-function notifyApplicationChange($pdo, $appData, $changeType) {
+function notifyApplicationChange($pdo, $appData, $changeType, $oldAppData = null) {
     $config = getTelegramConfig($pdo);
     if (!$config || empty($config['token']) || empty($config['chat_id'])) {
         return;
@@ -92,6 +111,27 @@ function notifyApplicationChange($pdo, $appData, $changeType) {
     $assessmentType = $appData['assessment_type'] ?? '';
     $assessmentDeadline = $appData['assessment_deadline'] ?? '';
 
+    // If it's an update, check if critical info actually changed
+    if ($changeType === 'update' && $oldAppData !== null) {
+        $hasSignificantChange = false;
+        
+        $oldStatus = $oldAppData['status'] ?? '';
+        $oldInterviewDate = $oldAppData['interview_date'] ?? '';
+        $oldFollowUpDate = $oldAppData['follow_up_date'] ?? '';
+        $oldAssessmentStatus = $oldAppData['assessment_status'] ?? '';
+        $oldAssessmentDeadline = $oldAppData['assessment_deadline'] ?? '';
+
+        if ($status !== $oldStatus) $hasSignificantChange = true;
+        if ($interviewDate !== $oldInterviewDate) $hasSignificantChange = true;
+        if ($followUpDate !== $oldFollowUpDate) $hasSignificantChange = true;
+        if ($assessmentStatus !== $oldAssessmentStatus) $hasSignificantChange = true;
+        if ($assessmentDeadline !== $oldAssessmentDeadline) $hasSignificantChange = true;
+
+        if (!$hasSignificantChange) {
+            return; // Exit early, no meaningful changes that warrant a push notification
+        }
+    }
+
     $msg = "";
     if ($changeType === 'create') {
         $msg .= "🔔 <b>[JobTracker] New Application Saved</b>\n\n";
@@ -101,6 +141,9 @@ function notifyApplicationChange($pdo, $appData, $changeType) {
 
     $msg .= "🏢 <b>Company:</b> " . htmlspecialchars($company) . "\n";
     $msg .= "💼 <b>Job Title:</b> " . htmlspecialchars($jobTitle) . "\n";
+    if (!empty($appData['job_link'])) {
+        $msg .= "🔗 <b>Job Link:</b> " . htmlspecialchars($appData['job_link']) . "\n";
+    }
     $msg .= "📊 <b>Status:</b> " . htmlspecialchars($status) . "\n";
 
     $hasImportantInfo = false;
@@ -124,8 +167,6 @@ function notifyApplicationChange($pdo, $appData, $changeType) {
         $hasImportantInfo = true;
     }
 
-    // Notify if it is a new entry or if it has critical upcoming schedule parameters
-    if ($changeType === 'create' || $hasImportantInfo) {
-        sendTelegramMessage($config['token'], $config['chat_id'], $msg);
-    }
+    // Notify since it passed the diff check (for updates) or is a new entry
+    sendTelegramMessage($config['token'], $config['chat_id'], $msg);
 }

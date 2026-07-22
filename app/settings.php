@@ -83,17 +83,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $tomorrowStr = date('Y-m-d', strtotime('+1 day'));
             
             // 1. Interviews (Today & Tomorrow)
-            $interviewsStmt = $pdo->prepare("SELECT company, job_title, interview_date FROM applications WHERE (interview_date = ? OR interview_date = ?) AND status = 'Interview'");
+            $interviewsStmt = $pdo->prepare("SELECT company, job_title, interview_date, job_link FROM applications WHERE (interview_date = ? OR interview_date = ?) AND status = 'Interview'");
             $interviewsStmt->execute([$todayStr, $tomorrowStr]);
             $interviews = $interviewsStmt->fetchAll(PDO::FETCH_ASSOC);
 
             // 2. Follow-ups (Today & Tomorrow)
-            $followupsStmt = $pdo->prepare("SELECT company, job_title, follow_up_date FROM applications WHERE (follow_up_date = ? OR follow_up_date = ?) AND status IN ('Applied', 'Pending', 'Viewed Application', 'Interview', 'Assessment')");
+            $followupsStmt = $pdo->prepare("SELECT company, job_title, follow_up_date, job_link FROM applications WHERE (follow_up_date = ? OR follow_up_date = ?) AND status IN ('Applied', 'Pending', 'Viewed Application', 'Interview', 'Assessment')");
             $followupsStmt->execute([$todayStr, $tomorrowStr]);
             $followups = $followupsStmt->fetchAll(PDO::FETCH_ASSOC);
 
             // 3. Assessments (Today, Tomorrow & Overdue)
-            $assessmentsStmt = $pdo->prepare("SELECT company, job_title, assessment_deadline, assessment_type FROM applications WHERE (assessment_deadline <= ? OR assessment_deadline = ?) AND assessment_status = 'Pending'");
+            $assessmentsStmt = $pdo->prepare("SELECT company, job_title, assessment_deadline, assessment_type, job_link FROM applications WHERE (assessment_deadline <= ? OR assessment_deadline = ?) AND assessment_status = 'Pending'");
             $assessmentsStmt->execute([$todayStr, $tomorrowStr]);
             $assessments = $assessmentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -106,7 +106,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $remMsg .= "🔔 <b>Interviews:</b>\n";
                     foreach ($interviews as $row) {
                         $when = ($row['interview_date'] === $todayStr) ? 'Today' : 'Tomorrow';
-                        $remMsg .= "• " . htmlspecialchars($row['company']) . " - " . htmlspecialchars($row['job_title']) . " (<i>" . $when . "</i>)\n";
+                        $link = !empty($row['job_link']) ? " (<a href=\"" . htmlspecialchars($row['job_link']) . "\">Job Link</a>)" : "";
+                        $remMsg .= "• " . htmlspecialchars($row['company']) . " - " . htmlspecialchars($row['job_title']) . $link . " (<i>" . $when . "</i>)\n";
                     }
                     $remMsg .= "\n";
                 }
@@ -115,7 +116,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $remMsg .= "📅 <b>Follow-ups:</b>\n";
                     foreach ($followups as $row) {
                         $when = ($row['follow_up_date'] === $todayStr) ? 'Today' : 'Tomorrow';
-                        $remMsg .= "• " . htmlspecialchars($row['company']) . " - " . htmlspecialchars($row['job_title']) . " (<i>" . $when . "</i>)\n";
+                        $link = !empty($row['job_link']) ? " (<a href=\"" . htmlspecialchars($row['job_link']) . "\">Job Link</a>)" : "";
+                        $remMsg .= "• " . htmlspecialchars($row['company']) . " - " . htmlspecialchars($row['job_title']) . $link . " (<i>" . $when . "</i>)\n";
                     }
                     $remMsg .= "\n";
                 }
@@ -124,7 +126,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $remMsg .= "📝 <b>Assessments Due:</b>\n";
                     foreach ($assessments as $row) {
                         $when = ($row['assessment_deadline'] < $todayStr) ? 'OVERDUE (' . $row['assessment_deadline'] . ')' : (($row['assessment_deadline'] === $todayStr) ? 'Today' : 'Tomorrow');
-                        $remMsg .= "• " . htmlspecialchars($row['company']) . " - " . htmlspecialchars($row['assessment_type']) . " (<i>" . $when . "</i>)\n";
+                        $link = !empty($row['job_link']) ? " (<a href=\"" . htmlspecialchars($row['job_link']) . "\">Job Link</a>)" : "";
+                        $remMsg .= "• " . htmlspecialchars($row['company']) . " - " . htmlspecialchars($row['assessment_type']) . $link . " (<i>" . $when . "</i>)\n";
                     }
                     $remMsg .= "\n";
                 }

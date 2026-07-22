@@ -9,8 +9,12 @@ services:
       - ./database:/var/www/database
     command: >
       bash -c "apt-get update &&
-               apt-get install -y libsqlite3-dev &&
+               apt-get install -y libsqlite3-dev cron &&
                docker-php-ext-install pdo_sqlite &&
+               echo '0 9 * * * /usr/local/bin/php /var/www/html/telegram_cron.php >> /var/log/cron.log 2>&1' > /etc/cron.d/telegram-cron &&
+               chmod 0644 /etc/cron.d/telegram-cron &&
+               crontab /etc/cron.d/telegram-cron &&
+               cron &&
                apache2-foreground"
     restart: unless-stopped
 
