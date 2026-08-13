@@ -32,6 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $job_link = trim($_POST['job_link'] ?? '');
     $remark = trim($_POST['remark'] ?? '');
     $follow_up_date = trim($_POST['follow_up_date'] ?? '');
+    $interview_type = trim($_POST['interview_type'] ?? '');
     $interview_date = trim($_POST['interview_date'] ?? '');
     $result = trim($_POST['result'] ?? '');
     $technical_skills = trim($_POST['technical_skills'] ?? '');
@@ -56,10 +57,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($company) || empty($job_title)) {
         $error = 'Company name and job title are required.';
     } else {
+        $initial_status_history = json_encode([
+            [
+                'status' => $status,
+                'date' => date('Y-m-d')
+            ]
+        ]);
+
         $stmt = $pdo->prepare("
             INSERT INTO applications 
-            (company, job_title, date_found, date_applied, status, platform, job_type, location, salary_range, job_link, remark, follow_up_date, interview_date, result, technical_skills, assessment_status, assessment_type, assessment_deadline, assessment_link, assessment_notes, interview_location, assessment_platform, location_link, interview_location_link)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (company, job_title, date_found, date_applied, status, status_history, platform, job_type, location, salary_range, job_link, remark, follow_up_date, interview_type, interview_date, result, technical_skills, assessment_status, assessment_type, assessment_deadline, assessment_link, assessment_notes, interview_location, assessment_platform, location_link, interview_location_link, assessment_history)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
@@ -68,6 +76,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $date_found ?: null,
             $date_applied ?: null,
             $status,
+            $initial_status_history,
             $platform ?: null,
             $job_type,
             $location ?: null,
@@ -75,6 +84,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $job_link ?: null,
             $remark ?: null,
             $follow_up_date ?: null,
+            $interview_type ?: null,
             $interview_date ?: null,
             $result ?: null,
             $technical_skills ?: null,
@@ -86,7 +96,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $interview_location ?: null,
             $assessment_platform ?: null,
             $location_link ?: null,
-            $interview_location_link ?: null
+            $interview_location_link ?: null,
+            null
         ]);
 
         $appId = $pdo->lastInsertId();
@@ -95,6 +106,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'company' => $company,
             'job_title' => $job_title,
             'status' => $status,
+            'interview_type' => $interview_type,
             'interview_date' => $interview_date,
             'follow_up_date' => $follow_up_date,
             'assessment_status' => $assessment_status,
@@ -108,7 +120,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $_SESSION['notification'] = [
             'type' => 'success',
-            'message' => 'Job application for <strong>' . htmlspecialchars($company) . '</strong> Successfully tracked!'
+            'message' => 'Job application for <strong>' . htmlspecialchars($company) . '</strong> S uccessfully tracked!'
         ];
 
         header("Location: index.php?view=applications");
@@ -277,8 +289,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <input type="text" name="location" placeholder="e.g. Kuala Lumpur, Remote">
                         </div>
 
-                        <div class="form-group">
-                            <label>Location Map Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
+                        <div class="form-group full-width" style="margin-top: 10px; margin-bottom: 5px;">
+                            <button type="button" class="btn secondary" style="width:100%; justify-content:center; font-size: 0.9em; background:var(--bg-secondary); color:var(--text-secondary); border: 1px dashed var(--border-color);" onclick="toggleAdvanced('advanced_job_details', this)">
+                                + Show Advanced Job Details (Salary, Skills, Links)
+                            </button>
+                        </div>
+
+                        <div id="advanced_job_details" style="display: none;">
+                            <div class="form-group">
+                                <label>Location Map Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
                             <input type="url" name="location_link" placeholder="https://maps.google.com/...">
                         </div>
 
@@ -297,13 +316,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <input type="text" name="technical_skills" placeholder="e.g. React, PHP, SQL, Figma">
                         </div>
 
-                        <!-- ── Section 2: Status & Tracking ── -->
+                        </div>
+
+                        <!-- ── Section 2: Timeline & Status ── -->
                         <div class="form-section-header">
                             <span class="form-section-number">2</span>
                             <div>
-                                <div class="form-section-title">Status &amp; Tracking</div>
+                                <div class="form-section-title">Timeline &amp; Status</div>
                                 <div class="form-section-subtitle">Track your application progress and dates</div>
                             </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Found Job</label>
+                            <input type="date" name="date_found" value="<?= date('Y-m-d') ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Applied</label>
+                            <input type="date" name="date_applied">
                         </div>
 
                         <div class="form-group">
@@ -322,7 +353,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         </div>
 
                         <!-- ── Interview Fields (shown when status = Interview) ── -->
-                        <div id="interview_fields" style="display:none; contents">
+                        <div id="interview_fields" style="display:none;"> <!--contents"-->
+                            <div class="form-group">
+                                <label>Interview Type</label>
+                                <select name="interview_type" id="interview_type">
+                                    <option value="" disabled selected>Select interview type</option>
+                                    <option value="Phone Call">Phone Call</option>
+                                    <option value="HR Screening">HR Screening</option>
+                                    <option value="Technical Interview">Technical Interview</option>
+                                    <option value="Manager Interview">Manager Interview</option>
+                                    <option value="Final Interview">Final Interview</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
                             <div class="form-group">
                                 <label>Interview Date</label>
                                 <input type="date" name="interview_date" id="interview_date">
@@ -338,7 +381,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         </div><!-- /#interview_fields -->
 
                         <!-- ── Assessment Fields (shown when status = Assessment) ── -->
-                        <div id="assessment_status_fields" style="display:none; contents">
+                        <div id="assessment_toggle_container" class="form-group full-width" style="display:none; margin-top: 10px;">
+                            <button type="button" class="btn secondary" style="width:100%; justify-content:center; font-size: 0.9em; background:var(--bg-secondary); color:var(--text-secondary); border: 1px dashed var(--border-color);" onclick="toggleAdvanced('assessment_status_fields', this)">
+                                + Add Assessment Details
+                            </button>
+                        </div>
+                        <div id="assessment_status_fields" style="display:none;">
                             <div class="form-group">
                                 <label>Assessment Type</label>
                                 <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
@@ -388,14 +436,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label>Date Found Job</label>
-                            <input type="date" name="date_found" value="<?= date('Y-m-d') ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Date Applied</label>
-                            <input type="date" name="date_applied">
+                        <!-- ── Section 3: Notes & Follow-up ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">3</span>
+                            <div>
+                                <div class="form-section-title">Notes &amp; Follow-up</div>
+                                <div class="form-section-subtitle">Set reminders and add remarks</div>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -442,19 +489,23 @@ function toggleStatusFields() {
     const status = document.getElementById('app_status').value;
     const interviewFields  = document.getElementById('interview_fields');
     const assessmentFields = document.getElementById('assessment_status_fields');
+    const assessmentToggle = document.getElementById('assessment_toggle_container');
 
     if (status === 'Interview') {
-        // Interview: show interview fields + assessment (assessment can happen during interview)
+        // Show only interview fields
         interviewFields.style.display  = 'contents';
-        assessmentFields.style.display = 'contents';
-        toggleAssessmentSuggestions();
+        assessmentFields.style.display = 'none';
+        assessmentToggle.style.display = 'contents';
     } else if (status === 'Assessment') {
+        // Show only assessment fields
         interviewFields.style.display  = 'none';
         assessmentFields.style.display = 'contents';
+        assessmentToggle.style.display = 'none';
         toggleAssessmentSuggestions();
     } else {
         interviewFields.style.display  = 'none';
         assessmentFields.style.display = 'none';
+        assessmentToggle.style.display = 'none';
     }
 }
 
@@ -538,6 +589,17 @@ function toggleAssessmentSuggestions() {
     tipsTitle.textContent = titleText;
     tipsBody.innerHTML = tipsHTML;
     container.classList.add('active');
+}
+
+function toggleAdvanced(id, btn) {
+    const el = document.getElementById(id);
+    if (el.style.display === 'none' || el.style.display === '') {
+        el.style.display = 'contents';
+        btn.innerHTML = btn.innerHTML.replace('+ Show', '- Hide');
+    } else {
+        el.style.display = 'none';
+        btn.innerHTML = btn.innerHTML.replace('- Hide', '+ Show');
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

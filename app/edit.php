@@ -71,6 +71,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $job_link = trim($_POST['job_link'] ?? '');
     $remark = trim($_POST['remark'] ?? '');
     $follow_up_date = trim($_POST['follow_up_date'] ?? '');
+    $interview_type = trim($_POST['interview_type'] ?? '');
     $interview_date = trim($_POST['interview_date'] ?? '');
     $result = trim($_POST['result'] ?? '');
     $technical_skills = trim($_POST['technical_skills'] ?? '');
@@ -95,9 +96,86 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($company) || empty($job_title)) {
         $error = 'Company name and job title are required.';
     } else {
+        $archive_interview = !empty($_POST['archive_interview']);
+        $delete_index = $_POST['delete_interview_index'] ?? '';
+        
+        $history = json_decode($app['interview_history'] ?? '[]', true) ?: [];
+
+        if ($delete_index !== '' && isset($history[$delete_index])) {
+            array_splice($history, $delete_index, 1);
+            $interview_history = json_encode($history);
+        } elseif ($archive_interview) {
+            if ($interview_date || $interview_type || $interview_location) {
+                $history[] = [
+                    'type' => $interview_type,
+                    'date' => $interview_date,
+                    'location' => $interview_location,
+                    'link' => $interview_location_link,
+                    'archived_at' => date('Y-m-d H:i:s')
+                ];
+                $interview_history = json_encode($history);
+            } else {
+                $interview_history = $app['interview_history'] ?? null;
+            }
+            
+            // Clear active fields
+            $interview_type = '';
+            $interview_date = '';
+            $interview_location = '';
+            $interview_location_link = '';
+        } else {
+            $interview_history = $app['interview_history'] ?? null;
+        }
+
+        // Assessment History processing
+        $archive_assessment = !empty($_POST['archive_assessment']);
+        $delete_assessment_idx = $_POST['delete_assessment_index'] ?? '';
+        
+        $a_history = json_decode($app['assessment_history'] ?? '[]', true) ?: [];
+
+        if ($delete_assessment_idx !== '' && isset($a_history[$delete_assessment_idx])) {
+            array_splice($a_history, $delete_assessment_idx, 1);
+            $assessment_history_json = json_encode($a_history);
+        } elseif ($archive_assessment) {
+            if ($assessment_type || $assessment_deadline || $assessment_platform || $assessment_notes || $assessment_link) {
+                $a_history[] = [
+                    'type' => $assessment_type,
+                    'deadline' => $assessment_deadline,
+                    'status' => $assessment_status ?: 'Completed',
+                    'platform' => $assessment_platform,
+                    'link' => $assessment_link,
+                    'notes' => $assessment_notes,
+                    'archived_at' => date('Y-m-d H:i:s')
+                ];
+                $assessment_history_json = json_encode($a_history);
+            } else {
+                $assessment_history_json = $app['assessment_history'] ?? null;
+            }
+            
+            // Clear active fields
+            $assessment_type = '';
+            $assessment_deadline = '';
+            $assessment_status = 'None';
+            $assessment_platform = '';
+            $assessment_link = '';
+            $assessment_notes = '';
+        } else {
+            $assessment_history_json = $app['assessment_history'] ?? null;
+        }
+        
+        $status_history_json = $app['status_history'] ?? '[]';
+        if (($app['status'] ?? '') !== $status) {
+            $status_history = json_decode($status_history_json, true) ?: [];
+            $status_history[] = [
+                'status' => $status,
+                'date' => date('Y-m-d')
+            ];
+            $status_history_json = json_encode($status_history);
+        }
+
         $updateStmt = $pdo->prepare("
             UPDATE applications 
-            SET company = ?, job_title = ?, date_found = ?, date_applied = ?, status = ?, platform = ?, job_type = ?, location = ?, salary_range = ?, job_link = ?, remark = ?, follow_up_date = ?, interview_date = ?, result = ?, technical_skills = ?, assessment_status = ?, assessment_type = ?, assessment_deadline = ?, assessment_link = ?, assessment_notes = ?, interview_location = ?, assessment_platform = ?, location_link = ?, interview_location_link = ?
+            SET company = ?, job_title = ?, date_found = ?, date_applied = ?, status = ?, status_history = ?, platform = ?, job_type = ?, location = ?, salary_range = ?, job_link = ?, remark = ?, follow_up_date = ?, interview_type = ?, interview_date = ?, interview_history = ?, result = ?, technical_skills = ?, assessment_status = ?, assessment_type = ?, assessment_deadline = ?, assessment_link = ?, assessment_notes = ?, interview_location = ?, assessment_platform = ?, location_link = ?, interview_location_link = ?, assessment_history = ?
             WHERE id = ?
         ");
 
@@ -107,6 +185,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $date_found ?: null,
             $date_applied ?: null,
             $status,
+            $status_history_json,
             $platform ?: null,
             $job_type,
             $location ?: null,
@@ -114,7 +193,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $job_link ?: null,
             $remark ?: null,
             $follow_up_date ?: null,
+            $interview_type ?: null,
             $interview_date ?: null,
+            $interview_history ?: null,
             $result ?: null,
             $technical_skills ?: null,
             $assessment_status,
@@ -126,6 +207,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $assessment_platform ?: null,
             $location_link ?: null,
             $interview_location_link ?: null,
+            $assessment_history_json,
             $id
         ]);
 
@@ -162,19 +244,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'company' => $company,
             'job_title' => $job_title,
             'status' => $status,
+            'status_history' => $status_history_json,
+            'interview_type' => $interview_type,
             'interview_date' => $interview_date,
+            'interview_history' => $interview_history,
             'follow_up_date' => $follow_up_date,
             'assessment_status' => $assessment_status,
             'assessment_type' => $assessment_type,
             'assessment_deadline' => $assessment_deadline,
             'assessment_link' => $assessment_link,
             'assessment_notes' => $assessment_notes,
-            'job_link' => $job_link
+            'job_link' => $job_link,
+            'assessment_history' => $assessment_history_json
         ];
         notifyApplicationChange($pdo, $updatedAppData, 'update', $app);
 
         $msg = 'Application for <strong>' . htmlspecialchars($company) . '</strong> updated successfully!';
-        if ($status === 'Interview' && !empty($interview_date)) {
+        if ($delete_index !== '') {
+            $msg = 'Past interview deleted successfully.';
+        } elseif ($delete_assessment_idx !== '') {
+            $msg = 'Past assessment deleted successfully.';
+        } elseif ($archive_interview) {
+            $msg = 'Interview stage saved! You can now enter the next stage details.';
+        } elseif ($archive_assessment) {
+            $msg = 'Assessment stage saved! You can now enter the next assessment details.';
+        } elseif ($status === 'Interview' && !empty($interview_date)) {
             $msg = 'Interview scheduled with <strong>' . htmlspecialchars($company) . '</strong> on ' . htmlspecialchars($interview_date) . '!';
         } elseif (!empty($follow_up_date)) {
             $msg = 'Follow-up set for <strong>' . htmlspecialchars($company) . '</strong> on ' . htmlspecialchars($follow_up_date) . '.';
@@ -185,7 +279,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'message' => $msg
         ];
 
-        header("Location: " . $back);
+        if ($archive_interview || $archive_assessment || $delete_index !== '' || $delete_assessment_idx !== '') {
+            header("Location: edit.php?id=" . urlencode($id) . "&back=" . urlencode($back));
+        } else {
+            header("Location: " . $back);
+        }
         exit;
     }
 }
@@ -351,10 +449,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <input type="text" name="location" value="<?= htmlspecialchars($app['location'] ?: '') ?>" placeholder="e.g. Kuala Lumpur, Remote">
                         </div>
 
-                        <div class="form-group">
-                            <label>Location Map Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
-                            <input type="url" name="location_link" value="<?= htmlspecialchars($app['location_link'] ?? '') ?>" placeholder="https://maps.google.com/...">
+                        <div class="form-group full-width" style="margin-top: 10px; margin-bottom: 5px;">
+                            <button type="button" class="btn secondary" style="width:100%; justify-content:center; font-size: 0.9em; background:var(--bg-secondary); color:var(--text-secondary); border: 1px dashed var(--border-color);" onclick="toggleAdvanced('advanced_job_details', this)">
+                                + Show Advanced Job Details (Salary, Skills, Links)
+                            </button>
                         </div>
+
+                        <div id="advanced_job_details" style="display: none;">
+                            <div class="form-group">
+                                <label>Location Map Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
+                                <input type="url" name="location_link" value="<?= htmlspecialchars($app['location_link'] ?? '') ?>" placeholder="https://maps.google.com/...">
+                            </div>
 
                         <div class="form-group">
                             <label>Salary Range</label>
@@ -370,14 +475,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <label>Technical / Skills Required</label>
                             <input type="text" name="technical_skills" value="<?= htmlspecialchars($app['technical_skills'] ?: '') ?>" placeholder="e.g. React, PHP, SQL, Figma">
                         </div>
+                        </div>
 
-                        <!-- ── Section 2: Status & Tracking ── -->
+                        <!-- ── Section 2: Timeline & Status ── -->
                         <div class="form-section-header">
                             <span class="form-section-number">2</span>
                             <div>
-                                <div class="form-section-title">Status &amp; Tracking</div>
+                                <div class="form-section-title">Timeline &amp; Status</div>
                                 <div class="form-section-subtitle">Track your application progress and dates</div>
                             </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Found Job</label>
+                            <input type="date" name="date_found" value="<?= htmlspecialchars($app['date_found'] ?: '') ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Applied</label>
+                            <input type="date" name="date_applied" value="<?= htmlspecialchars($app['date_applied'] ?: '') ?>">
                         </div>
 
                         <div class="form-group">
@@ -393,6 +509,45 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <!-- ── Interview Fields (shown when status = Interview) ── -->
                         <div id="interview_fields" style="display:none;">
+                            <?php 
+                            $history = json_decode($app['interview_history'] ?? '[]', true) ?: [];
+                            if (!empty($history)): 
+                            ?>
+                            <div class="form-group full-width" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                                <strong style="display:block; margin-bottom:10px; font-size:0.95em; color:var(--text-secondary);">Past Interview Stages:</strong>
+                                <input type="hidden" name="delete_interview_index" id="delete_interview_index" value="">
+                                <ul style="margin: 0; padding-left: 20px; font-size: 0.9em; line-height: 1.5;">
+                                    <?php foreach ($history as $idx => $h): ?>
+                                        <li style="margin-bottom: 5px;">
+                                            <strong><?= htmlspecialchars($h['type'] ?? 'Interview') ?></strong> 
+                                            (<?= htmlspecialchars($h['date'] ?? 'N/A') ?>)
+                                            <?php if (!empty($h['location'])): ?>
+                                                - <?= htmlspecialchars($h['location']) ?>
+                                            <?php endif; ?>
+                                            <button type="button" style="background:none; border:none; color:var(--danger-color); cursor:pointer; font-size: 0.85em; margin-left: 10px; opacity: 0.8; padding: 0;" onclick="if(confirm('Delete this past interview?')) { document.getElementById('delete_interview_index').value = '<?= $idx ?>'; this.closest('form').submit(); }">
+                                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                                Remove
+                                            </button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                            <div class="form-group full-width" style="margin-bottom: 5px;">
+                                <strong style="font-size: 0.95em;">Active / Next Interview Stage:</strong>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="form-group">
+                                <label>Interview Type</label>
+                                <select name="interview_type" id="interview_type">
+                                    <option value="" disabled <?= empty($app['interview_type']) ? 'selected' : '' ?>>Select interview type</option>
+                                    <?php 
+                                    $i_types = ['Phone Call', 'HR Screening', 'Technical Interview', 'Manager Interview', 'Final Interview', 'Other'];
+                                    foreach ($i_types as $itype): ?>
+                                        <option value="<?= $itype ?>" <?= ($app['interview_type'] ?? '') === $itype ? 'selected' : '' ?>><?= $itype ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                             <div class="form-group">
                                 <label>Interview Date</label>
                                 <input type="date" name="interview_date" id="interview_date" value="<?= htmlspecialchars($app['interview_date'] ?: '') ?>">
@@ -405,10 +560,53 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 <label>Interview Location Link <span style="font-weight:400;opacity:.6;font-size:.85em;">(optional)</span></label>
                                 <input type="url" name="interview_location_link" id="interview_location_link" value="<?= htmlspecialchars($app['interview_location_link'] ?? '') ?>" placeholder="https://maps.google.com/...">
                             </div>
+
+                            <div class="form-group full-width" style="margin-top: 10px;">
+                                <input type="hidden" name="archive_interview" id="archive_interview" value="0">
+                                <button type="button" class="btn secondary" style="width:100%; justify-content:center; font-size: 0.9em;" onclick="document.getElementById('archive_interview').value='1'; this.closest('form').submit();">
+                                    ✓ Mark as Completed &amp; Go to Next Stage
+                                </button>
+                            </div>
                         </div>
 
                         <!-- ── Assessment Inline Fields (shown when status = Assessment) ── -->
+                        <div id="assessment_toggle_container" class="form-group full-width" style="display:none; margin-top: 10px;">
+                            <button type="button" class="btn secondary" style="width:100%; justify-content:center; font-size: 0.9em; background:var(--bg-secondary); color:var(--text-secondary); border: 1px dashed var(--border-color);" onclick="toggleAdvanced('assessment_status_fields', this)">
+                                + Add Assessment Details
+                            </button>
+                        </div>
                         <div id="assessment_status_fields" style="display:none;">
+                            <?php 
+                            $a_history = json_decode($app['assessment_history'] ?? '[]', true) ?: [];
+                            if (!empty($a_history)): 
+                            ?>
+                            <div class="form-group full-width" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                                <strong style="display:block; margin-bottom:10px; font-size:0.95em; color:var(--text-secondary);">Past Assessment Stages:</strong>
+                                <input type="hidden" name="delete_assessment_index" id="delete_assessment_index" value="">
+                                <ul style="margin: 0; padding-left: 20px; font-size: 0.9em; line-height: 1.5;">
+                                    <?php foreach ($a_history as $idx => $h): ?>
+                                        <li style="margin-bottom: 5px;">
+                                            <strong><?= htmlspecialchars($h['type'] ?? 'Assessment') ?></strong> 
+                                            (<?= htmlspecialchars($h['deadline'] ?? 'N/A') ?>)
+                                            <?php if (!empty($h['platform'])): ?>
+                                                - <?= htmlspecialchars($h['platform']) ?>
+                                            <?php endif; ?>
+                                            <?php if (!empty($h['status'])): ?>
+                                                [<?= htmlspecialchars($h['status']) ?>]
+                                            <?php endif; ?>
+                                            <button type="button" style="background:none; border:none; color:var(--danger-color); cursor:pointer; font-size: 0.85em; margin-left: 10px; opacity: 0.8; padding: 0;" onclick="if(confirm('Delete this past assessment?')) { document.getElementById('delete_assessment_index').value = '<?= $idx ?>'; this.closest('form').submit(); }">
+                                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                                Remove
+                                            </button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                            <div class="form-group full-width" style="margin-bottom: 5px;">
+                                <strong style="font-size: 0.95em;">Active / Next Assessment Stage:</strong>
+                            </div>
+                            <?php endif; ?>
+
                             <div class="form-group">
                                 <label>Assessment Type</label>
                                 <select name="assessment_type" id="assessment_type" onchange="toggleAssessmentSuggestions()">
@@ -456,16 +654,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                     </div>
                                 </div>
                             </div>
+                            
+                            <div class="form-group full-width" style="margin-top: 10px;">
+                                <input type="hidden" name="archive_assessment" id="archive_assessment" value="0">
+                                <button type="button" class="btn secondary" style="width:100%; justify-content:center; font-size: 0.9em;" onclick="document.getElementById('archive_assessment').value='1'; this.closest('form').submit();">
+                                    ✓ Mark as Completed &amp; Go to Next Assessment
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="form-group">
-                            <label>Date Found Job</label>
-                            <input type="date" name="date_found" value="<?= htmlspecialchars($app['date_found'] ?: '') ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Date Applied</label>
-                            <input type="date" name="date_applied" value="<?= htmlspecialchars($app['date_applied'] ?: '') ?>">
+                        <!-- ── Section 3: Notes & Follow-up ── -->
+                        <div class="form-section-header">
+                            <span class="form-section-number">3</span>
+                            <div>
+                                <div class="form-section-title">Notes &amp; Follow-up</div>
+                                <div class="form-section-subtitle">Set reminders and add remarks</div>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -579,8 +783,8 @@ function toggleAssessmentSuggestions() {
 }
 
 // Flags set from PHP — true if this record already has saved data for that section
-const hasInterviewData   = <?= (!empty($app['interview_date']) || !empty($app['interview_location'])) ? 'true' : 'false' ?>;
-const hasAssessmentData  = <?= (!empty($app['assessment_deadline']) || !empty($app['assessment_type']) || !empty($app['assessment_notes']) || !empty($app['assessment_link'])) ? 'true' : 'false' ?>;
+const hasInterviewData   = <?= (!empty($app['interview_date']) || !empty($app['interview_location']) || !empty($app['interview_type']) || (!empty($app['interview_history']) && $app['interview_history'] !== '[]')) ? 'true' : 'false' ?>;
+const hasAssessmentData  = <?= (!empty($app['assessment_deadline']) || !empty($app['assessment_type']) || !empty($app['assessment_notes']) || !empty($app['assessment_link']) || (!empty($app['assessment_history']) && $app['assessment_history'] !== '[]')) ? 'true' : 'false' ?>;
 
 // Show/hide Interview or Assessment fields based on main status dropdown.
 // Rule: ALWAYS show a section if it has existing saved data, regardless of current status.
@@ -589,6 +793,7 @@ function toggleStatusFields() {
     const status = document.getElementById('app_status').value;
     const interviewFields  = document.getElementById('interview_fields');
     const assessmentFields = document.getElementById('assessment_status_fields');
+    const assessmentToggle = document.getElementById('assessment_toggle_container');
 
     // Interview section: show if status === Interview OR data already exists
     if (status === 'Interview' || hasInterviewData) {
@@ -597,12 +802,28 @@ function toggleStatusFields() {
         interviewFields.style.display = 'none';
     }
 
-    // Assessment section: show if status === Interview, Assessment, OR data already exists
-    if (status === 'Interview' || status === 'Assessment' || hasAssessmentData) {
+    // Assessment section: show if status === Assessment OR data already exists
+    if (status === 'Assessment' || hasAssessmentData) {
         assessmentFields.style.display = 'contents';
+        if (assessmentToggle) assessmentToggle.style.display = 'none';
         toggleAssessmentSuggestions();
+    } else if (status === 'Interview' || hasInterviewData) {
+        assessmentFields.style.display = 'none';
+        if (assessmentToggle) assessmentToggle.style.display = 'contents';
     } else {
         assessmentFields.style.display = 'none';
+        if (assessmentToggle) assessmentToggle.style.display = 'none';
+    }
+}
+
+function toggleAdvanced(id, btn) {
+    const el = document.getElementById(id);
+    if (el.style.display === 'none' || el.style.display === '') {
+        el.style.display = 'contents';
+        btn.innerHTML = btn.innerHTML.replace('+ Show', '- Hide');
+    } else {
+        el.style.display = 'none';
+        btn.innerHTML = btn.innerHTML.replace('- Hide', '+ Show');
     }
 }
 

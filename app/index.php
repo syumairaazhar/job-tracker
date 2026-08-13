@@ -111,7 +111,10 @@ function serializeAppDetail($row) {
         'job_link'            => $row['job_link'] ?: '',
         'remark'              => $row['remark'] ?: '',
         // Interview
+        'interview_type'             => $row['interview_type'] ?? '',
         'interview_date'             => $row['interview_date'] ?: '',
+        'interview_history'          => $row['interview_history'] ?? '',
+        'status_history'             => $row['status_history'] ?? '',
         'interview_location'         => $row['interview_location'] ?? '',
         'interview_location_link'    => $row['interview_location_link'] ?? '',
         // Assessment
@@ -121,6 +124,7 @@ function serializeAppDetail($row) {
         'assessment_platform'        => $row['assessment_platform'] ?? '',
         'assessment_link'            => $row['assessment_link'] ?? '',
         'assessment_notes'           => $row['assessment_notes'] ?? '',
+        'assessment_history'         => $row['assessment_history'] ?? '',
         // Links
         'location_link'              => $row['location_link'] ?? '',
     ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
@@ -983,28 +987,8 @@ foreach ($jobTypeData as $item) {
                 <!-- 📅 Visual Timeline -->
                 <div class="modal-section-group">
                     <span class="modal-section-title">Timeline</span>
-                    <div class="visual-timeline">
-                        <div id="modalDateFoundNode" class="timeline-node" style="display:none;">
-                            <div class="timeline-dot"></div>
-                            <div class="timeline-content">
-                                <span class="timeline-label">Date Found</span>
-                                <span id="modalDateFound" class="timeline-value"></span>
-                            </div>
-                        </div>
-                        <div id="modalDateAppliedNode" class="timeline-node">
-                            <div class="timeline-dot active"></div>
-                            <div class="timeline-content">
-                                <span class="timeline-label">Date Applied</span>
-                                <span id="modalDateApplied" class="timeline-value"></span>
-                            </div>
-                        </div>
-                        <div id="modalFollowUpDateNode" class="timeline-node" style="display:none;">
-                            <div class="timeline-dot warning"></div>
-                            <div class="timeline-content">
-                                <span class="timeline-label">Follow-up Date</span>
-                                <span id="modalFollowUpDate" class="timeline-value"></span>
-                            </div>
-                        </div>
+                    <div id="dynamicTimeline" class="visual-timeline">
+                        <!-- Rendered dynamically via JS -->
                     </div>
                 </div>
 
@@ -1016,6 +1000,14 @@ foreach ($jobTypeData as $item) {
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
                         </div>
                         <div class="ticket-details">
+                            <div id="modalInterviewHistoryItem" style="display:none; margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 6px;">
+                                <strong style="display:block; font-size:0.9em; margin-bottom:5px;">Past Stages:</strong>
+                                <ul id="modalInterviewHistoryList" style="margin:0; padding-left:20px; font-size:0.9em;"></ul>
+                            </div>
+                            <div id="modalInterviewTypeItem" style="display:none;">
+                                <span class="ticket-label">Interview Type</span>
+                                <span id="modalInterviewType" class="ticket-value"></span>
+                            </div>
                             <div id="modalInterviewDateItem" style="display:none;">
                                 <span class="ticket-label">Interview Date</span>
                                 <span id="modalInterviewDate" class="ticket-value"></span>
@@ -1041,6 +1033,10 @@ foreach ($jobTypeData as $item) {
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                         </div>
                         <div class="ticket-details">
+                            <div id="modalAssessmentHistoryItem" style="display:none; margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 6px;">
+                                <strong style="display:block; font-size:0.9em; margin-bottom:5px;">Past Assessments:</strong>
+                                <ul id="modalAssessmentHistoryList" style="margin:0; padding-left:20px; font-size:0.9em;"></ul>
+                            </div>
                             <div id="modalAssessmentStatusItem" style="display:none;">
                                 <span class="ticket-label">Status</span>
                                 <span id="modalAssessmentStatus" class="modal-assessment-badge"></span>
@@ -1731,21 +1727,102 @@ foreach ($jobTypeData as $item) {
                     skillsWrapper.style.display = 'none';
                 }
 
-                // ── Timeline (only show fields with data) ──
-                // Date Applied always shown
-                const daEl = document.getElementById('modalDateApplied');
-                daEl.textContent = details.date_applied || 'Not specified';
-                daEl.className   = details.date_applied ? 'modal-info-value' : 'modal-info-value empty';
+                // ── Timeline (Dynamic Chronological) ──
+                const timelineEvents = [];
+                
+                if (details.date_found) timelineEvents.push({ label: 'Date Found', date: details.date_found, type: 'default' });
+                if (details.date_applied) timelineEvents.push({ label: 'Applied', date: details.date_applied, type: 'active' });
+                if (details.follow_up_date) timelineEvents.push({ label: 'Follow-up', date: details.follow_up_date, type: 'warning' });
+                if (details.interview_date) timelineEvents.push({ label: `Interview (${details.interview_type || 'Scheduled'})`, date: details.interview_date, type: 'primary' });
+                if (details.assessment_deadline) timelineEvents.push({ label: `Assessment (${details.assessment_type || 'Deadline'})`, date: details.assessment_deadline, type: 'warning' });
 
-                setOptional('modalDateFoundNode',    'modalDateFound',    details.date_found);
-                setOptional('modalFollowUpDateNode', 'modalFollowUpDate', details.follow_up_date);
+                // Add Interview History
+                if (details.interview_history && details.interview_history.trim() !== '[]') {
+                    try {
+                        const historyData = JSON.parse(details.interview_history);
+                        historyData.forEach(h => {
+                            if (h.date) timelineEvents.push({ label: `Interview (${h.type || 'Past'})`, date: h.date, type: 'primary' });
+                        });
+                    } catch(e) {}
+                }
+
+                // Add Assessment History
+                if (details.assessment_history && details.assessment_history.trim() !== '[]') {
+                    try {
+                        const aHistoryData = JSON.parse(details.assessment_history);
+                        aHistoryData.forEach(h => {
+                            if (h.deadline) timelineEvents.push({ label: `Assessment (${h.type || 'Past'})`, date: h.deadline, type: 'warning' });
+                        });
+                    } catch(e) {}
+                }
+
+                // Add Status History
+                if (details.status_history && details.status_history.trim() !== '[]') {
+                    try {
+                        const statusData = JSON.parse(details.status_history);
+                        statusData.forEach(s => {
+                            if (s.date && s.status !== 'Applied') {
+                                timelineEvents.push({ label: `Status: ${s.status}`, date: s.date, type: 'primary' });
+                            }
+                        });
+                    } catch(e) {}
+                }
+
+                // Sort chronologically (oldest first)
+                timelineEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                // Always add current status at the end if it's significant
+                if (details.status && details.status !== 'Applied' && details.status !== 'Pending') {
+                    const lastEvent = timelineEvents[timelineEvents.length - 1];
+                    if (!lastEvent || lastEvent.label !== `Status: ${details.status}`) {
+                        timelineEvents.push({ label: `Current Status: ${details.status}`, date: 'Now', type: 'active' });
+                    }
+                }
+
+                const dynamicTimeline = document.getElementById('dynamicTimeline');
+                if (dynamicTimeline) {
+                    dynamicTimeline.innerHTML = timelineEvents.map(ev => `
+                        <div class="timeline-node">
+                            <div class="timeline-dot ${ev.type}"></div>
+                            <div class="timeline-content">
+                                <span class="timeline-label">${ev.label}</span>
+                                <span class="timeline-value">${ev.date}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                }
 
                 // ── Interview Section (show only when interview data exists) ──
                 const interviewSection  = document.getElementById('modalInterviewSection');
                 const hasInterview      = (details.interview_date && details.interview_date.trim()) ||
-                                          (details.interview_location && details.interview_location.trim());
+                                          (details.interview_location && details.interview_location.trim()) ||
+                                          (details.interview_type && details.interview_type.trim()) ||
+                                          (details.interview_history && details.interview_history.trim() !== '[]');
                 if (hasInterview) {
                     interviewSection.style.display = '';
+
+                    // Handle History
+                    const historyItem = document.getElementById('modalInterviewHistoryItem');
+                    const historyList = document.getElementById('modalInterviewHistoryList');
+                    if (details.interview_history && details.interview_history.trim() !== '[]') {
+                        try {
+                            const historyData = JSON.parse(details.interview_history);
+                            if (historyData.length > 0) {
+                                historyItem.style.display = 'block';
+                                historyList.innerHTML = historyData.map(h => 
+                                    `<li><strong>${h.type || 'Interview'}</strong> (${h.date || 'N/A'})${h.location ? ` - ${h.location}` : ''}</li>`
+                                ).join('');
+                            } else {
+                                historyItem.style.display = 'none';
+                            }
+                        } catch (e) {
+                            historyItem.style.display = 'none';
+                        }
+                    } else {
+                        historyItem.style.display = 'none';
+                    }
+
+                    setOptional('modalInterviewTypeItem',     'modalInterviewType',     details.interview_type);
                     setOptional('modalInterviewDateItem',     'modalInterviewDate',     details.interview_date);
                     setOptional('modalInterviewLocationItem', 'modalInterviewLocation', details.interview_location);
 
@@ -1767,9 +1844,40 @@ foreach ($jobTypeData as $item) {
                 const aStatus           = (details.assessment_status || 'None').trim();
                 const hasAssessment     = aStatus !== 'None' && aStatus !== '' ||
                                           (details.assessment_type && details.assessment_type.trim()) ||
-                                          (details.assessment_deadline && details.assessment_deadline.trim());
+                                          (details.assessment_deadline && details.assessment_deadline.trim()) ||
+                                          (details.assessment_history && details.assessment_history.trim() !== '[]');
                 if (hasAssessment) {
                     assessmentSection.style.display = '';
+
+                    // Handle History
+                    const aHistoryItem = document.getElementById('modalAssessmentHistoryItem');
+                    const aHistoryList = document.getElementById('modalAssessmentHistoryList');
+                    if (details.assessment_history && details.assessment_history.trim() !== '[]') {
+                        try {
+                            const aHistoryData = JSON.parse(details.assessment_history);
+                            if (aHistoryData.length > 0) {
+                                aHistoryItem.style.display = 'block';
+                                aHistoryList.replaceChildren(); // Securely clear children
+                                aHistoryData.forEach(h => {
+                                    const li = document.createElement('li');
+                                    const strong = document.createElement('strong');
+                                    strong.textContent = h.type || 'Assessment';
+                                    li.appendChild(strong);
+                                    
+                                    const detailsText = ` (${h.deadline || 'N/A'})${h.platform ? ` - ${h.platform}` : ''}${h.status ? ` [${h.status}]` : ''}`;
+                                    li.appendChild(document.createTextNode(detailsText));
+                                    
+                                    aHistoryList.appendChild(li);
+                                });
+                            } else {
+                                aHistoryItem.style.display = 'none';
+                            }
+                        } catch (e) {
+                            aHistoryItem.style.display = 'none';
+                        }
+                    } else {
+                        aHistoryItem.style.display = 'none';
+                    }
 
                     // Assessment status badge
                     if (aStatus && aStatus !== 'None') {

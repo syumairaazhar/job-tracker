@@ -31,7 +31,10 @@ CREATE TABLE IF NOT EXISTS applications (
         "job_link TEXT",
         "remark TEXT",
         "follow_up_date TEXT",
+        "interview_type TEXT",
         "interview_date TEXT",
+        "interview_history TEXT",
+        "status_history TEXT",
         "result TEXT",
         "technical_skills TEXT",
         "assessment_status TEXT DEFAULT 'None'",
@@ -42,7 +45,8 @@ CREATE TABLE IF NOT EXISTS applications (
         "interview_location TEXT",
         "assessment_platform TEXT",
         "location_link TEXT",
-        "interview_location_link TEXT"
+        "interview_location_link TEXT",
+        "assessment_history TEXT"
     ];
 
     foreach ($columns as $column) {
